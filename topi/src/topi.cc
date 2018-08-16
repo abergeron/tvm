@@ -158,6 +158,11 @@ TVM_REGISTER_GLOBAL("topi.negative")
   *rv = negative(args[0]);
   });
 
+TVM_REGISTER_GLOBAL("topi.bool_not")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  *rv = bool_not(args[0]);
+  });
+
 TVM_REGISTER_GLOBAL("topi.clip")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
   *rv = clip(args[0], args[1], args[2]);

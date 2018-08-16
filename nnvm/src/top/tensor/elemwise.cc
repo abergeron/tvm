@@ -93,6 +93,18 @@ NNVM_REGISTER_ELEMWISE_UNARY_OP(abs)
       return Array<Tensor>{ topi::abs(inputs[0]) };
 });
 
+// bool_not
+NNVM_REGISTER_ELEMWISE_UNARY_OP(bool_not)
+.describe(R"code(takes the boolean negation of the input.
+)code" NNVM_ADD_FILELINE)
+.set_support_level(3)
+.set_attr<FTVMCompute>(
+  "FTVMCompute", [](const NodeAttrs& attrs,
+                    const Array<Tensor>& inputs,
+                    const Array<Tensor>& out_info) {
+                   return Array<Tensor>{ topi::cast(topi::bool_not(topi::cast(inputs[0], tvm::Bool())), out_info[0]->dtype) };
+});
+
 // sigmoid
 NNVM_REGISTER_ELEMWISE_UNARY_OP(sigmoid)
 .describe(R"code(Computes sigmoid.
