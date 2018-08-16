@@ -27,7 +27,7 @@ using namespace nnvm::compiler;
 NNVM_REGISTER_ELEMWISE_UNARY_OP(__undef__)
 .describe(R"code(undefined op.
 
-Used to produce invalide node during optimization.
+Used to produce invalid node during optimization.
 
 )code" NNVM_ADD_FILELINE)
 .set_num_outputs(1)
