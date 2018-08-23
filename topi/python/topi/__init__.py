@@ -16,6 +16,7 @@ from tvm._ffi.libinfo import __version__
 from . import cpp
 
 from .math import *
+from .logic import *
 from .tensor import *
 from .generic_op_impl import *
 from .reduction import *

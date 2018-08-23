@@ -325,3 +325,41 @@ def less_equal(lhs, rhs):
         Otherwise returns Tensor.
     """
     return _cpp.less_equal(lhs, rhs)
+
+
+def logical_and(lhs, rhs):
+    """Compute (lhs && rhs) with auto-broadcasting
+
+    Parameters
+    ----------
+    lhs : tvm.Tensor or Expr
+        The left operand
+    rhs : tvm.Tensor or Expr
+        The right operand
+
+    Returns
+    -------
+    ret : tvm.Tensor or Expr
+        Returns Expr if both operands are Expr.
+        Otherwise returns Tensor.
+    """
+    return _cpp.logical_and(lhs, rhs)
+
+
+def logical_or(lhs, rhs):
+    """Compute (lhs || rhs) with auto-broadcasting
+
+    Parameters
+    ----------
+    lhs : tvm.Tensor or Expr
+        The left operand
+    rhs : tvm.Tensor or Expr
+        The right operand
+
+    Returns
+    -------
+    ret : tvm.Tensor or Expr
+        Returns Expr if both operands are Expr.
+        Otherwise returns Tensor.
+    """
+    return _cpp.logical_or(lhs, rhs)

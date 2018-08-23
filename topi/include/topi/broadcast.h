@@ -309,6 +309,39 @@ TOPI_DEFINE_BCAST_OP(greater_equal, { return (a >= b); });
  */
 TOPI_DEFINE_BCAST_OP(less_equal, { return (a <= b); });
 
+
+/*!
+ * \fn logical_and
+ * \brief Compute (A && B) with auto-broadcasting.
+ *
+ * This operation only accepts booleans as input.
+ *
+ * \param A The first tensor, or Expr
+ * \param B The second tensor, or Expr
+ * \param name the name of the operation
+ * \param name The name of the operation
+ * \param tag The tag to mark the operation
+ *
+ * \return The result.
+ */
+TOPI_DEFINE_BCAST_OP(logical_and, { return tvm::ir::And::make(a, b); });
+
+/*!
+ * \fn logical_or
+ * \brief Compute (A || B) with auto-broadcasting.
+ *
+ * This operation only accepts booleans as input.
+ *
+ * \param A The first tensor, or Expr
+ * \param B The second tensor, or Expr
+ * \param name the name of the operation
+ * \param name The name of the operation
+ * \param tag The tag to mark the operation
+ *
+ * \return The result.
+ */
+TOPI_DEFINE_BCAST_OP(logical_or, { return tvm::ir::Or::make(a, b); });
+
 }  // namespace topi
 
 #endif  // TOPI_BROADCAST_H_

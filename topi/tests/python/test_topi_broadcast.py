@@ -169,6 +169,14 @@ def test_cmp():
         (7, 1, 5), (7, 3, 1), less_equal, np.less_equal,
         lhs_min=-3, lhs_max=3, rhs_min=-3, rhs_max=3, dtype='int32')
 
+def test_logic():
+    verify_broadcast_binary_ele(
+        (7, 1, 5), (7, 3, 1), logical_and, np.logical_and,
+        lhs_min=-3, lhs_max=3, rhs_min=-3, rhs_max=3, dtype='bool')
+    verify_broadcast_binary_ele(
+        (7, 1, 5), (7, 3, 1), logical_or, np.logical_or,
+        lhs_min=-3, lhs_max=3, rhs_min=-3, rhs_max=3, dtype='bool')
+
 def test_shift():
     # explicit specify the output type
     verify_broadcast_binary_ele(
