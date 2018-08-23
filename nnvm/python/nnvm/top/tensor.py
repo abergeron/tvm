@@ -42,6 +42,10 @@ _fschedule_injective = tvm.convert(_schedule_injective)
 _fschedule_broadcast = _fschedule_injective
 _fschedule_elemwise = _fschedule_injective
 
+
+reg.register_pattern("logical_not", OpPattern.ELEMWISE)
+reg.register_schedule("logical_not", _fschedule_elemwise)
+
 # Assign requires special treatment in the compiler
 # The compute and schedule are designed as
 # copy from rhs to output
