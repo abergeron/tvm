@@ -18,6 +18,8 @@
 see README.md for the usage and results of this script.
 """
 import argparse
+import os
+import sys
 import threading
 
 import numpy as np
@@ -26,7 +28,7 @@ import tvm
 import tvm.contrib.graph_runtime as runtime
 from tvm import relay
 
-from util import get_network
+from util import get_network, tune_tasks
 
 
 def benchmark(network, target):
@@ -48,8 +50,54 @@ def benchmark(network, target):
     print("%-20s %-19s (%s)" % (network, "%.2f ms" % np.mean(prof_res), "%.2f ms" % np.std(prof_res)))
 
 
+def autotune(network, target, model):
+    from tvm import autotvm
+    from tvm.autotvm.tuner import XGBTuner, GATuner, RandomTuner, GridSearchTuner
+    from tvm.contrib.util import tempdir
+
+    net, params, input_shape, output_shape = get_network(network, batch_size=1)
+
+    with relay.build_config(opt_level=3):
+        graph, lib, params = relay.build(net, target=target, params=params)
+
+    # create runtime
+    ctx = tvm.context(str(target), 0)
+    mod = runtime.create(graph, lib, ctx)
+
+    log_file = "%s.log" % network
+    dtype = 'float32'
+
+    print("Tuning for", model)
+
+    tuning_opt = {
+        'log_filename': log_file,
+        'tuner': 'xgb',
+        'n_trial': 2000,
+        'early_stopping': 600,
+
+        'measure_option': autotvm.measure_option(
+            builder=autotvm.LocalBuilder(timeout=10),
+            runner=autotvm.RPCRunner(
+                model,
+                '0.0.0.0', 9190,
+                number=20, repeat=3, timeout=4, min_repeat_ms=150)
+        ),
+    }
+
+    # extract workloads from relay program
+    print("Extract tasks...")
+    tasks = autotvm.task.extract_from_program(mod["main"], target=target,
+                                              params=params, ops=(relay.op.nn.conv2d, relay.op.nn.conv2d_transpose))
+
+    # run tuning tasks
+    print("Tuning...")
+    tune_tasks(tasks, **tuning_opt)
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--autotune", action='store_true', default=False)
     parser.add_argument("--network", type=str, choices=
                         ['resnet-18', 'resnet-34', 'resnet-50',
                          'vgg-16', 'vgg-19', 'densenet-121', 'inception_v3',
@@ -74,6 +122,11 @@ if __name__ == "__main__":
         networks = [args.network]
 
     target = tvm.target.create('%s -model=%s' % (args.target, args.model))
+
+    if args.autotune:
+        for network in networks:
+            autotune(network, target, args.model)
+            sys.exit(0)
 
     print("--------------------------------------------------")
     print("%-20s %-20s" % ("Network Name", "Mean Inference Time (std dev)"))
