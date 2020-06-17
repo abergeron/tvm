@@ -16,13 +16,14 @@
 # under the License.
 
 if(USE_POPLAR_CODEGEN STREQUAL "ON")
+  message(STATUS "Build with contrib.poplar")
+  find_library(EXTERN_LIBRARY_POPLAR poplar)
+  file(GLOB POPLAR_CONTRIB_SRC src/runtime/contrib/poplar/*.cc)
   file(GLOB POPLAR_RELAY_CONTRIB_SRC src/relay/backend/contrib/poplar/codegen.cc)
   list(APPEND COMPILER_SRCS ${POPLAR_RELAY_CONTRIB_SRC})
-
-  find_library(EXTERN_LIBRARY_POPLAR poplar)
   # Maybe link with poplibs?
   list(APPEND TVM_LINKER_LIBS ${EXTERN_LIBRARY_POPLAR})
 
-  # Maybe need to link runtime with poplar/poplibs?
-  message(STATUS "Build with Poplar codegen: " ${EXTERN_LIBRARY_POPLAR})
+  list(APPEND RUNTIME_SRCS ${POPLAR_CONTRIB_SRC})
+  list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_POPLAR})
 endif()
