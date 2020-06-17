@@ -27,7 +27,7 @@ public:
   void VisitExpr_(const RefWriteNode* node) {}
   void VisitExpr_(const ConstructorNode* node) {}
   void VisitExpr_(const MatchNode* node) {}
-}
+};
 
 }
 }

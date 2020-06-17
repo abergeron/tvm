@@ -17,6 +17,20 @@
  * under the License.
  */
 
+#include <dmlc/logging.h>
+#include <tvm/runtime/c_runtime_api.h>
+#include <tvm/runtime/memory.h>
+#include <tvm/runtime/module.h>
+#include <tvm/runtime/ndarray.h>
+#include <tvm/runtime/object.h>
+#include <tvm/runtime/packed_func.h>
+#include <tvm/runtime/registry.h>
+
+#include <cmath>
+#include <map>
+#include <string>
+#include <vector>
+
 namespace tvm {
 namespace runtime {
 
@@ -34,7 +48,7 @@ public:
   static Module Create(const std::string& path);
   std::string GetSource(const std::string& format = "");
   void Run(int id, const std::vector<int>& inputs, int output);
-}
+};
   
 }
 }
