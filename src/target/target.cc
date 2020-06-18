@@ -139,6 +139,9 @@ Target CreateTarget(const std::string& target_name, const std::vector<std::strin
   } else if (target_name == "webgpu") {
     t->keys_array.push_back("webgpu");
     t->device_type = kDLWebGPU;
+  } else if (target_name == "ipu") {
+    t->keys_array.push_back("ipu");
+    t->device_type = kDLIPU;
   } else {
     LOG(ERROR) << "Unknown target name " << target_name << "; falling back to stackvm";
     return target::stackvm();
@@ -313,5 +316,8 @@ Target stackvm(const std::vector<std::string>& options) { return CreateTarget("s
 Target ext_dev(const std::vector<std::string>& options) { return CreateTarget("ext_dev", options); }
 
 Target hexagon(const std::vector<std::string>& options) { return CreateTarget("hexagon", options); }
+
+Target ipu(const std::vector<std::string>& options) { return CreateTarget("ipu", options); }
+
 }  // namespace target
 }  // namespace tvm

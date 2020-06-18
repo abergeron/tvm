@@ -170,6 +170,9 @@ TVM_DLL Target ext_dev(const std::vector<std::string>& options = std::vector<std
 
 /*! \return A target for hexagon */
 TVM_DLL Target hexagon(const std::vector<std::string>& options = std::vector<std::string>());
+
+/*! \return A target for IPU */
+TVM_DLL Target ipu(const std::vector<std::string>& options = std::vector<std::string>());
 }  // namespace target
 
 }  // namespace tvm
