@@ -67,18 +67,21 @@ void IPUDeviceAPI::GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue* rv)
   }
   CHECK_LT(index, m_.getNumDevices()) << "Invalid device id " << index;
 
-  // Calling poplar::Device::getAttributes() segfaults, so we will
-  // just fake the results for now.
+  // None of the properties for IPU seem relevant for these so we just
+  // fake them for now.
 
   switch(kind) {
     case kDeviceName: {
       *rv = std::string("IPU");
+      break;
     }
     case kMaxClockRate: {
       *rv = 1300;
+      break;
     }
     case kMultiProcessorCount: {
       *rv = 1216;
+      break;
     }
     default:
       return;
