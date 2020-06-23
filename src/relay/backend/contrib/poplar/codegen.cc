@@ -17,9 +17,53 @@ public:
   explicit PoplarCodeGen() {}
 
   std::vector<poplar::program::Program> run(poplar::Graph& g, const ObjectRef& ref) {
-    std::vector<poplar::program::Program> progs;
+    std::vector<poplar::program::Program> progs(3);
     curg_ = &g;
+    progs[0] = poplar::program::Sequence();
+    progs[1] = poplar::program::Sequence();
+    progs_ = &progs;
 
+    if (ref->IsInstance<FunctionNode>()) {
+      progs[2] = poplar::program::Sequence();
+      curprog_ = &progs[2];
+      this->VisitExpr(Downcast<Function>(ref));
+      curprog_ = nullptr;
+
+    } else if (ref->IsInstance<IRModuleNode>()) {
+      IRModule mod = Downcast<IRModule>(ref);
+
+      BaseFunc main = mod->Lookup("main");
+      prog_map_[main] = 2;
+      progs[2] = poplar::program::Sequence();
+
+      // First map the functions to progams
+      for (const auto& it : mod->functions) {
+	// We skip the "main" function since it was handled above
+	if (it.first->name_hint.compare("main") == 0)
+	  continue;
+
+	size_t index = progs.size();
+	progs.push_back(poplar::program::Sequence());
+	prog_map_[it.second] = index;
+      }
+
+      // Main is special since its input/output go to the outside world
+
+
+      // Then convert the functions
+      for (const auto& it : mod->functions) {
+	// We skip the "main" function since it was handled above
+	if (it.first->name_hint.compare("main") == 0)
+	  continue;
+
+	curprog_ = &progs[prog_map_[it.second]];
+	this->VisitExpr(Downcast<Function>(it.second));
+	curprog_ = nullptr;
+      }
+    }
+
+    prog_map_.clear();
+    progs_ = nullptr;
     curg_ = nullptr;
     return progs;
   }
@@ -43,7 +87,8 @@ public:
 private:
   poplar::Graph* curg_;
   poplar::program::Program* curprog_;
-  std::vector<poplar::program::Program> progs_;
+  std::vector<poplar::program::Program>* progs_;
+  std::map<BaseFunc, size_t> prog_map_;
 };
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
