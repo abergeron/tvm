@@ -3,6 +3,7 @@
 #include <poplar/Program.hpp>
 #include <poplar/Type.hpp>
 #include <poplar/VariableMappingMethod.hpp>
+#include <poplar/Engine.hpp>
 
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
@@ -10,10 +11,14 @@
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/object.h>
 
+#include "../../../../runtime/contrib/poplar/fn_info.h"
+
 namespace tvm {
 namespace relay {
 namespace contrib {
-  /*
+
+using PoplarFunctionInfo = tvm::runtime::contrib::PoplarFunctionInfo;
+
 static poplar::Type to_poplar_type(DataType& dt) {
   if (dt.lanes() != 1) {
     LOG(FATAL) << "Poplar doesn't support multi-lane data types (for now)\n";
@@ -22,9 +27,9 @@ static poplar::Type to_poplar_type(DataType& dt) {
   case kDLInt:
     switch (dt.bits()) {
     case 32:
-      return poplar::SIGNED_INT;
+      return poplar::INT;
     case 16:
-      return poplar::SIGNED_SHORT;
+      return poplar::SHORT;
     case 8:
       return poplar::SIGNED_CHAR;
     }
@@ -54,7 +59,7 @@ static poplar::Type to_poplar_type(DataType& dt) {
   }
   LOG(FATAL) << "Unsupported data type for poplar:" << dt << "\n";
 }
-  */
+
 
 class PoplarCodeGen : public ExprVisitor {
 public:
@@ -155,13 +160,20 @@ private:
 };
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
-  poplar::Target t = poplar::Target::createIPUTarget(1, "C2");
+  // XXX: We need some way for the user to configure this
+  poplar::Target t = poplar::Target::createIPUTarget(1, "ipu1");
   poplar::Graph g(t);
   PoplarCodeGen codegen;
+  // XXX: This needs to be filled in
+  std::map<std::string, PoplarFunctionInfo> fn_map;
   auto progs = codegen.run(g, ref);
+
+  // Compile
+  poplar::Executable exe = poplar::compileGraph(g, progs);
+
   const auto* pf = runtime::Registry::Get("module.poplar_module_create");
-  CHECK(pf != nullptr) << "Cannot fine Poplar module to create the external runtime module";
-  return (*pf)(static_cast<void*>(&g), static_cast<void*>(&progs));
+  CHECK(pf != nullptr) << "Cannot find Poplar module to create the external runtime module";
+  return (*pf)(static_cast<void*>(&exe), static_cast<void*>(&fn_map));
 }
 
 TVM_REGISTER_GLOBAL("relay.ext.poplar").set_body_typed(PoplarCompiler);
