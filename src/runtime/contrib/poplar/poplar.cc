@@ -26,29 +26,107 @@
 #include <tvm/runtime/packed_func.h>
 #include <tvm/runtime/registry.h>
 
-#include <cmath>
 #include <map>
 #include <string>
 #include <vector>
 
+#include "../../pack_args.h"
+
+#include "common.h"
+#include "fn_info.h"
+
 namespace tvm {
 namespace runtime {
+namespace contrib {
+
+class PoplarWrappedFunc;
 
 class PoplarModule : public ModuleNode {
 public:
-  explicit PoplarModule();
+  explicit PoplarModule(poplar::Executable exe, std::unordered_map<std::string, PoplarFunctionInfo> fmap) : eng_(std::move(exe)), fmap_(fmap) {}
+
+  const char* type_key() const { return "poplar"; }
 
   PackedFunc GetFunction(const std::string& name,
 			 const ObjectPtr<Object>& sptr_to_self) final;
 
-  const char* type_key() const { return "poplar"; }
+  /* These are probably not possible for now */
+  void SaveToBinary(dmlc::Stream* stream) final {
+    CHECK(false) << "not possible";
+  }
 
-  void SaveToBinary(dmlc::Stream* stream) final;
-  static Module LoadFromBinary(void *strm);
-  static Module Create(const std::string& path);
-  std::string GetSource(const std::string& format = "");
-  void Run(int id, const std::vector<int>& inputs, int output);
+  static Module LoadFromBinary(void *strm) {
+    CHECK(false) << "not possible";
+    return Module();
+  }
+
+  std::string GetSource(const std::string& format = "") {
+    CHECK(false) << "not for now";
+    return "";
+  }
+
+  void ensure_current() {
+    IPUThreadEntry* t = IPUDeviceAPI::Global()->GetThreadEntry();
+    // This is cached and will do nothing if engine is already loaded.
+    t->set_active_engine(&eng_);
+  }
+
+private:
+  poplar::Engine eng_;
+  std::unordered_map<std::string, PoplarFunctionInfo> fmap_;
+  friend class PoplarWrappedFunc;
 };
-  
+
+class PoplarWrappedFunc {
+public:
+  PoplarWrappedFunc(PoplarModule* m, PoplarFunctionInfo& info, ObjectPtr<Object> sptr) : m_(m), info_(info), sptr_(sptr) {}
+
+  void operator()(TVMArgs args, TVMRetValue* rv, void** void_args) const {
+    m_->ensure_current();
+
+    // Setup arguments
+    int i = 0;
+    for (const auto& it: info_.input_channels) {
+      m_->eng_.connectStream(it, void_args[i++]);
+    }
+    m_->eng_.connectStream(info_.output_channel, void_args[i]);
+
+    // run the function;
+    m_->eng_.run(info_.program_index);
+  }
+
+private:
+  PoplarModule* m_;
+  PoplarFunctionInfo& info_;
+
+  // I don't know why we need this
+  ObjectPtr<Object> sptr_;
+};
+
+PackedFunc PoplarModule::GetFunction(const std::string& name,
+				     const ObjectPtr<Object>& sptr_to_self) {
+  const auto& it = fmap_.find(name);
+  if (it == fmap_.end()) {
+    LOG(FATAL) << "Unknown function: " << name << "\n";
+    return PackedFunc();
+  }
+
+  PoplarWrappedFunc f(this, it->second, sptr_to_self);
+  return PackFuncVoidAddr(f, it->second.arg_types);
+}
+
+TVM_REGISTER_GLOBAL("module.poplar_module_create")
+.set_body_typed([](void* exe_, void* fmap_) {
+    // If there is a way to no got through void pointers, I would like
+    // to know it.
+    // Maybe if we dump/load the Executable, but still need to deal with
+    // the function map (although that could be dump/loaded too maybe).
+    auto* exe = static_cast<poplar::Executable*>(exe_);
+    auto* fmap = static_cast<std::unordered_map<std::string, PoplarFunctionInfo>*>(fmap_);
+    auto m = make_object<PoplarModule>(std::move(*exe), *fmap);
+    return runtime::Module(m);
+});
+
+}
 }
 }
