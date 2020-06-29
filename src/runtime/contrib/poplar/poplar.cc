@@ -117,7 +117,7 @@ PackedFunc PoplarModule::GetFunction(const std::string& name,
 
 TVM_REGISTER_GLOBAL("module.poplar_module_create")
 .set_body_typed([](void* exe_, void* fmap_) {
-    // If there is a way to no got through void pointers, I would like
+    // If there is a way to not go through void pointers, I would like
     // to know it.
     // Maybe if we dump/load the Executable, but still need to deal with
     // the function map (although that could be dump/loaded too maybe).

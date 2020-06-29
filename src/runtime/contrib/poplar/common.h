@@ -1,3 +1,6 @@
+#ifndef TVM_RUNTIME_CONTRIB_POPLAR_COMMON_H_
+#define TVM_RUNTIME_CONTRIB_POPLAR_COMMON_H_
+
 #include <dmlc/thread_local.h>
 
 #include <tvm/runtime/device_api.h>
@@ -75,3 +78,5 @@ public:
 }
 }
 }
+
+#endif

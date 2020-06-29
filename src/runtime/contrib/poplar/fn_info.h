@@ -1,3 +1,6 @@
+#ifndef TVM_RUNTIME_CONTRIB_POPLAR_FN_INFO_H_
+#define TVM_RUNTIME_CONTRIB_POPLAR_FN_INFO_H_
+
 #include <dlpack/dlpack.h>
 
 #include <vector>
@@ -18,3 +21,5 @@ struct PoplarFunctionInfo {
 }
 }
 }
+
+#endif
