@@ -127,6 +127,50 @@ TVM_REGISTER_GLOBAL("module.poplar_module_create")
     return runtime::Module(m);
 });
 
+
+void PoplarFunctionInfo::Save(dmlc::JSONWriter* writer) const {
+  std::vector<std::string> sarg_types(arg_types.size());
+  for (size_t i = 0; i < arg_types.size(); ++i) {
+    sarg_types[i] = DLDataType2String(arg_types[i]);
+  }
+  writer->BeginObject();
+  writer->WriteObjectKeyValue("program_index", program_index);
+  writer->WriteObjectKeyValue("arg_types", sarg_types);
+  writer->WriteObjectKeyValue("input_channels", input_channels);
+  writer->WriteObjectKeyValue("output_channel", output_channel);
+  writer->EndObject();
+}
+
+void PoplarFunctionInfo::Load(dmlc::JSONReader* reader) {
+  dmlc::JSONObjectReadHelper helper;
+  std::vector<std::string> sarg_types;
+  helper.DeclareField("program_index", &program_index);
+  helper.DeclareField("arg_types", &sarg_types);
+  helper.DeclareField("input_channels", &input_channels);
+  helper.DeclareField("output_channel", &output_channel);
+  helper.ReadAllFields(reader);
+  arg_types.resize(sarg_types.size());
+  for (size_t i = 0; i < arg_types.size(); ++i) {
+    arg_types[i] = String2DLDataType(sarg_types[i]);
+  }
+}
+
+
+void PoplarFunctionInfo::Save(dmlc::Stream* writer) const {
+  writer->Write(program_index);
+  writer->Write(arg_types);
+  writer->Write(input_channels);
+  writer->Write(output_channel);
+}
+
+bool PoplarFunctionInfo::Load(dmlc::Stream* reader) {
+  if (!reader->Read(&program_index)) return false;
+  if (!reader->Read(&arg_types)) return false;
+  if (!reader->Read(&input_channels)) return false;
+  if (!reader->Read(&output_channel)) return false;
+  return true;
+}
+
 }
 }
 }
