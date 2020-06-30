@@ -89,26 +89,30 @@ public:
 
       // First map the functions to progams
       for (const auto& it : mod->functions) {
-	// We skip the "main" function since it was handled above
+        // We skip the "main" function since it was handled above
 
-	if (it.first->name_hint.compare("main") == 0)
-	  continue;
+        if (it.first->name_hint.compare("main") == 0)
+          continue;
 
-	Function f = Downcast<Function>(it.second);
-	size_t index = progs.size();
-	progs.push_back(poplar::program::Sequence());
-	prog_map_[f] = index;
-	setup_args(f, index);
+        Function f = Downcast<Function>(it.second);
+        size_t index = progs.size();
+        progs.push_back(poplar::program::Sequence());
+        prog_map_[f] = index;
+        setup_args(f, index);
       }
 
       // Then convert the functions
       for (const auto& it : mod->functions) {
-	// We skip the "main" function since it was handled above
-	Function f = Downcast<Function>(it.second);
+        // We skip the "main" function since it was handled above
 
-	curprog_ = &progs[prog_map_[f]];
-	this->VisitExpr(f);
-	curprog_ = nullptr;
+        if (it.first->name_hint.compare("main") == 0)
+          continue;
+
+        Function f = Downcast<Function>(it.second);
+
+        curprog_ = &progs[prog_map_[f]];
+        this->VisitExpr(f);
+        curprog_ = nullptr;
       }
     }
 
