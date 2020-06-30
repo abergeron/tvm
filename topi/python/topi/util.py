@@ -435,7 +435,7 @@ def make_idx(b, e, s, z, i):
 
 
 def is_empty_shape(shape):
-    """Check whether an input shape has dimesion with size 0.
+    """Check whether an input shape has dimension with size 0.
 
     Parameter
     ---------
