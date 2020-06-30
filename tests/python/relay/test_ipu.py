@@ -2,45 +2,62 @@
 Copied here to allow to set IPU as target.
 """
 
+import sys
 import tvm
 from tvm import relay
 from tvm.relay.op import add
 import numpy as np
 
-def get_ipu_target_and_context():
-    target = "ipu"
-    ctx = tvm.context(target, 0)
-    assert ctx.exist
-    return target, ctx
+def check_result(mod, map_inputs, out_shape, result, tol=1e-5, target="llvm",
+                 ctx=tvm.cpu()):
+    if sys.platform == "win32":
+        print("Skip test on Windows for now")
+        return
 
-# @tq, @jr should we put this in testing ns?
-def check_rts(expr, args, expected_result, mod=None, target=None, ctx=None):
-    """
-    Check that evaluating `expr` applied to the arguments produces
-    `result` on both the evaluator and TVM runtime.
+    def update_lib(lib):
+        test_dir = os.path.dirname(os.path.realpath(os.path.expanduser(__file__)))
+        source_dir = os.path.join(test_dir, "..", "..", "..")
+        contrib_path = os.path.join(source_dir, "src", "runtime", "contrib")
 
-    Parameters
-    ----------
-    expr:
-        The expression to evaluate
+        kwargs = {}
+        kwargs["options"] = ["-O2", "-std=c++14", "-I" + contrib_path]
+        tmp_path = util.tempdir()
+        lib_name = 'lib.so'
+        lib_path = tmp_path.relpath(lib_name)
+        lib.export_library(lib_path, fcompile=False, **kwargs)
+        lib = tvm.runtime.load_module(lib_path)
 
-    args: list of Expr
-        The arguments to supply the expr.
+        return lib
 
-    expected_result:
-        The expected result of running the expression.
-    """
-    executor_kwargs = {}
-    if target is not None:
-        executor_kwargs['target'] = target
-    if ctx is not None:
-        executor_kwargs['ctx'] = ctx
-    intrp = relay.create_executor('debug', mod=mod, **executor_kwargs)
-    graph = relay.create_executor('graph', mod=mod, **executor_kwargs)
-    eval_result = intrp.evaluate(expr)(*args)
-    rts_result = graph.evaluate(expr)(*args)
-    tvm.testing.assert_allclose(eval_result.asnumpy(), rts_result.asnumpy())
-    tvm.testing.assert_allclose(eval_result.asnumpy(), expected_result)
+    def check_vm_result():
+        with tvm.transform.PassContext(opt_level=3,
+                                       disabled_pass=["AlterOpLayout"]):
+            exe = relay.vm.compile(mod, target=target)
+        code, lib = exe.save()
+        lib = update_lib(lib)
+        exe = runtime.vm.Executable.load_exec(code, lib)
+        vm = runtime.vm.VirtualMachine(exe)
+        vm.init(ctx)
+        out = vm.run(**map_inputs)
+        tvm.testing.assert_allclose(out.asnumpy(), result, rtol=tol, atol=tol)
+
+    def check_graph_runtime_result():
+        with tvm.transform.PassContext(opt_level=3,
+                                       disabled_pass=["AlterOpLayout"]):
+            json, lib, _ = relay.build(mod, target=target)
+        lib = update_lib(lib)
+        rt_mod = tvm.contrib.graph_runtime.create(json, lib, ctx)
+
+        for name, data in map_inputs.items():
+            rt_mod.set_input(name, data)
+        rt_mod.run()
+        out = tvm.nd.empty(out_shape, ctx=ctx)
+        out = rt_mod.get_output(0, out)
+
+        tvm.testing.assert_allclose(out.asnumpy(), result, rtol=tol, atol=tol)
+
+    check_vm_result()
+    check_graph_runtime_result()
 
 def test_add_op_scalar():
     """
@@ -51,9 +68,15 @@ def test_add_op_scalar():
     """
     x = relay.var('x', shape=())
     y = relay.var('y', shape=())
-    func = relay.Function([x, y], add(x, y))
+    x0 = relay.var('x0', shape=())
+    y0 = relay.var('y0', shape=())
+    z0 = add(x0, y0)
+    func = relay.Function([x0, y0], z0)
+    func = func.with_attr("Primitive", tvm.tir.IntImm("int32", 1))
+    func = func.with_attr("Compiler", "poplar")
+    func = func.with_attr("global_symbol", "main")
+    call = relay.Call(func, [x, y])
+    mod = tvm.IRModule.from_expr(call)
     x_data = np.array(10.0, dtype='float32')
     y_data = np.array(1.0, dtype='float32')
-
-    target, ctx = get_ipu_target_and_context()
-    check_rts(func, [x_data, y_data], x_data + y_data, target=target, ctx=ctx)
+    check_result(mod, {"x": x_data, "y": y_data}, (), x_data + y_data, target='cpu')

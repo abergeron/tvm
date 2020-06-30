@@ -43,7 +43,9 @@ class PoplarWrappedFunc;
 
 class PoplarModule : public ModuleNode {
 public:
-  explicit PoplarModule(poplar::Executable exe, std::unordered_map<std::string, PoplarFunctionInfo> fmap) : eng_(std::move(exe)), fmap_(fmap) {}
+  explicit PoplarModule(poplar::Executable&& exe, const std::unordered_map<std::string, PoplarFunctionInfo>& fmap) : eng_(std::move(exe)), fmap_(fmap) {
+    LOG(WARNING) << "new poplar module";
+  }
 
   const char* type_key() const { return "poplar"; }
 
@@ -121,9 +123,13 @@ TVM_REGISTER_GLOBAL("module.poplar_module_create")
     // to know it.
     // Maybe if we dump/load the Executable, but still need to deal with
     // the function map (although that could be dump/loaded too maybe).
+    LOG(WARNING) << "A1";
     auto* exe = static_cast<poplar::Executable*>(exe_);
+    LOG(WARNING) << "A2";
     auto* fmap = static_cast<std::unordered_map<std::string, PoplarFunctionInfo>*>(fmap_);
+    LOG(WARNING) << "A3";
     auto m = make_object<PoplarModule>(std::move(*exe), *fmap);
+    LOG(WARNING) << "A4";
     return runtime::Module(m);
 });
 
