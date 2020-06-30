@@ -48,6 +48,13 @@
 # - /path/to/cuda: use specific path to cuda toolkit
 set(USE_CUDA OFF)
 
+# Whether enable POPLAR during compile,
+#
+# Possible values:
+# - ON: enable POPLAR with cmake's auto search
+# - OFF: disable POPLAR
+set(USE_POPLAR OFF)
+
 # Whether enable ROCM runtime
 #
 # Possible values:

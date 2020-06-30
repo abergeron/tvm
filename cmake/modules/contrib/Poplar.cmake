@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-if(USE_POPLAR_CODEGEN STREQUAL "ON")
+if(USE_POPLAR)
   message(STATUS "Build with contrib.poplar")
   find_library(EXTERN_LIBRARY_POPLAR poplar)
   file(GLOB POPLAR_CONTRIB_SRC src/runtime/contrib/poplar/*.cc)
