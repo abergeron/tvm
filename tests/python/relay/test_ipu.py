@@ -2,10 +2,13 @@
 Copied here to allow to set IPU as target.
 """
 
+import os
 import sys
 import tvm
 from tvm import relay
 from tvm.relay.op import add
+from tvm.contrib import util
+from tvm import runtime
 import numpy as np
 
 def check_result(mod, map_inputs, out_shape, result, tol=1e-5, target="llvm",
@@ -34,7 +37,7 @@ def check_result(mod, map_inputs, out_shape, result, tol=1e-5, target="llvm",
                                        disabled_pass=["AlterOpLayout"]):
             exe = relay.vm.compile(mod, target=target)
         code, lib = exe.save()
-        lib = update_lib(lib)
+        # lib = update_lib(lib)
         exe = runtime.vm.Executable.load_exec(code, lib)
         vm = runtime.vm.VirtualMachine(exe)
         vm.init(ctx)
@@ -79,4 +82,4 @@ def test_add_op_scalar():
     mod = tvm.IRModule.from_expr(call)
     x_data = np.array(10.0, dtype='float32')
     y_data = np.array(1.0, dtype='float32')
-    check_result(mod, {"x": x_data, "y": y_data}, (), x_data + y_data, target='cpu')
+    check_result(mod, {"x": x_data, "y": y_data}, (), x_data + y_data, target='ipu')

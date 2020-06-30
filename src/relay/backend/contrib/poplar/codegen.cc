@@ -88,11 +88,12 @@ public:
 
       prog_map_[main] = 2;
       progs[2] = poplar::program::Sequence();
-      setup_args(main, 2);
+      setup_args(main, 2, "main");
 
       // First map the functions to progams
       for (const auto& it : mod->functions) {
         // We skip the "main" function since it was handled above
+        LOG(WARNING) << "function " << it.first->name_hint;
 
         if (it.first->name_hint.compare("main") == 0)
           continue;
@@ -101,7 +102,7 @@ public:
         size_t index = progs.size();
         progs.push_back(poplar::program::Sequence());
         prog_map_[f] = index;
-        setup_args(f, index);
+        setup_args(f, index, it.first->name_hint);
       }
 
       // Then convert the functions
@@ -157,17 +158,24 @@ public:
   void VisitExpr_(const MatchNode* node) {}
 
 private:
-  void setup_args(Function fn, size_t index) {
+  void setup_args(Function fn, size_t index, const std::string& name) {
     if (arg_map_.size() < (index - 1))
       arg_map_.resize(index - 1);
     auto& args = arg_map_[index-2];
+    PoplarFunctionInfo pfi;
+    pfi.program_index = index;
     for (const auto& it : fn->params) {
       args.push_back(curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR,
 					it->vid->name_hint.c_str()));
+	  pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
+	  pfi.input_channels.push_back(it->vid->name_hint);
     }
     // Last is the output
     args.push_back(curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR,
 				      "fn_output"));
+	pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
+    pfi.output_channel = "fn_output";
+    poplar_function_info[name] = pfi;
   }
 
   poplar::Graph* curg_;
@@ -175,6 +183,8 @@ private:
   std::vector<poplar::program::Program>* progs_;
   std::map<Function, size_t> prog_map_;
   std::vector<std::vector<poplar::Tensor>> arg_map_;
+public:
+  std::unordered_map<std::string, PoplarFunctionInfo> poplar_function_info;
 };
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
@@ -182,9 +192,9 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
   poplar::Target t = poplar::Target::createIPUTarget(1, "ipu1");
   poplar::Graph g(t);
   PoplarCodeGen codegen;
-  // XXX: This needs to be filled in
-  std::map<std::string, PoplarFunctionInfo> fn_map;
   auto progs = codegen.run(g, ref);
+  // XXX: This needs to be filled in
+  std::unordered_map<std::string, PoplarFunctionInfo>& fn_map = codegen.poplar_function_info;
 
   // Compile
   poplar::Executable exe = poplar::compileGraph(g, progs);

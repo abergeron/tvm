@@ -118,12 +118,8 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {
       // class with non-virtual destructor.
       // We are fine here as we captured the right deleter during construction.
       // This is also the right way to get storage type for an object pool.
-      LOG(WARNING) << "hello";
       StorageType* data = new StorageType();
-      LOG(WARNING) << "world";
       new (data) T(std::forward<Args>(args)...);
-      // this won't execute
-      LOG(WARNING) << "end";
       return reinterpret_cast<T*>(data);
     }
 
