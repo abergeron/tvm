@@ -20,6 +20,7 @@
 from __future__ import absolute_import as _abs
 
 from .generic import *
+from . import ipu
 from . import x86
 from . import arm_cpu
 from . import cuda

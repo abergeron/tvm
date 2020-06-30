@@ -43,6 +43,7 @@ from .scatter import *
 from .argwhere import *
 from . import generic
 from . import nn
+from . import ipu
 from . import x86
 from . import cuda
 from . import arm_cpu
