@@ -10,12 +10,15 @@
 #include <tvm/relay/type.h>
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/object.h>
+#include "../../utils.h"
 
 #include "../../../../runtime/contrib/poplar/fn_info.h"
 
 namespace tvm {
 namespace relay {
 namespace contrib {
+
+using namespace backend;
 
 using PoplarFunctionInfo = tvm::runtime::contrib::PoplarFunctionInfo;
 
@@ -131,7 +134,18 @@ public:
   void VisitExpr_(const ConstantNode* node) {}
   void VisitExpr_(const TupleNode* node) {}
   void VisitExpr_(const FunctionNode* node) {}
-  void VisitExpr_(const CallNode* node) {}
+  void VisitExpr_(const CallNode* call) {
+    if (IsOp(call, "add")) {
+      LOG(WARNING) << "+";
+    } else if (IsOp(call, "subtract")) {
+      LOG(WARNING) << "-";
+    } else if (IsOp(call, "multiply")) {
+      LOG(WARNING) << "*";
+    } else {
+      LOG(FATAL) << "Unrecognized op";
+    }
+    LOG(WARNING) << "ipu call node";
+  }
   void VisitExpr_(const LetNode* node) {}
   void VisitExpr_(const IfNode* node) {}
   void VisitExpr_(const OpNode* node) {}
