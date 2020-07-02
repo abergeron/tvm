@@ -479,7 +479,7 @@ def webgpu(dev_id=0):
 
 
 def ipu(dev_id=0):
-    """Construct a IPU device
+    """Construct an IPU device.
 
     Parameters
     ----------
