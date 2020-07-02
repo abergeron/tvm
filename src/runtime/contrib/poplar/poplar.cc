@@ -107,6 +107,12 @@ private:
 
 PackedFunc PoplarModule::GetFunction(const std::string& name,
 				     const ObjectPtr<Object>& sptr_to_self) {
+  if (name == "get_symbol") {
+    return nullptr;
+  } else if (name == "get_const_vars") {
+    return nullptr;
+  }
+
   const auto& it = fmap_.find(name);
   if (it == fmap_.end()) {
     for (auto it = fmap_.begin(); it != fmap_.end(); ++it)
