@@ -4,6 +4,8 @@
 #include <poplar/Type.hpp>
 #include <poplar/VariableMappingMethod.hpp>
 #include <poplar/Engine.hpp>
+#include <popops/ElementWise.hpp>
+#include <popops/codelets.hpp>
 
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
@@ -76,18 +78,20 @@ public:
     progs_ = &progs;
 
     if (ref->IsInstance<FunctionNode>()) {
-      LOG(WARNING) << "function node";
+      LOG(WARNING) << "RUN FunctionNode";
       Function f = Downcast<Function>(ref);
       auto fname = GetExtSymbol(f);
       prog_map_[f] = 2;
       progs[2] = poplar::program::Sequence();
       setup_args(f, 2, fname);
       curprog_ = &progs[2];
+      curr_index_ = 2;
       this->VisitExpr(f);
+      curr_index_ = -1;
       curprog_ = nullptr;
 
     } else if (ref->IsInstance<IRModuleNode>()) {
-      LOG(WARNING) << "irmodule node";
+      LOG(WARNING) << "RUN IRModuleNode";
       IRModule mod = Downcast<IRModule>(ref);
 
       Function main = Downcast<Function>(mod->Lookup("main"));
@@ -149,50 +153,87 @@ public:
     return std::string(name_node.value());
   }
 
-  void VisitExpr_(const VarNode* node) {}
-  void VisitExpr_(const GlobalVarNode* node) {}
-  void VisitExpr_(const ConstantNode* node) {}
-  void VisitExpr_(const TupleNode* node) {}
-  void VisitExpr_(const FunctionNode* node) {}
+  void VisitExpr_(const VarNode* node) {
+  }
+  void VisitExpr_(const GlobalVarNode* node) {
+  }
+  void VisitExpr_(const ConstantNode* node) {
+  }
+  void VisitExpr_(const TupleNode* node) {
+  }
+  void VisitExpr_(const FunctionNode* node) {
+    LOG(WARNING) << "VISIT FunctionNode";
+    this->VisitExpr(node->body);
+  }
   void VisitExpr_(const CallNode* call) {
+    LOG(WARNING) << "VISIT CallNode";
     if (IsOp(call, "add")) {
-      LOG(WARNING) << "+";
+      CHECK_EQ(call->args.size(), 2);
+      CHECK_GT(curr_index_, -1);
+      auto& args = arg_map_[curr_index_ - 2];
+      CHECK_EQ(args.size(), 3);
+      auto& lhs = args[0];
+      auto& rhs = args[1];
+      auto& ret = args[2];
+      auto seq_ = (poplar::program::Sequence*)curprog_;
+      auto res = popops::add(*curg_, lhs, rhs, *seq_, "Add");
+      seq_->add(poplar::program::Copy(res, ret));
+      LOG(WARNING) << "VISIT op +";
     } else if (IsOp(call, "subtract")) {
-      LOG(WARNING) << "-";
+      LOG(WARNING) << "VISIT op -";
     } else if (IsOp(call, "multiply")) {
-      LOG(WARNING) << "*";
+      LOG(WARNING) << "VISIT op *";
     } else {
       LOG(FATAL) << "Unrecognized op";
     }
-    LOG(WARNING) << "ipu call node";
   }
-  void VisitExpr_(const LetNode* node) {}
-  void VisitExpr_(const IfNode* node) {}
-  void VisitExpr_(const OpNode* node) {}
-  void VisitExpr_(const TupleGetItemNode* node) {}
-  void VisitExpr_(const RefCreateNode* node) {}
-  void VisitExpr_(const RefReadNode* node) {}
-  void VisitExpr_(const RefWriteNode* node) {}
-  void VisitExpr_(const ConstructorNode* node) {}
-  void VisitExpr_(const MatchNode* node) {}
+  void VisitExpr_(const LetNode* node) {
+    LOG(WARNING) << "VISIT LetNode";
+  }
+  void VisitExpr_(const IfNode* node) {
+    LOG(WARNING) << "VISIT IfNode";
+  }
+  void VisitExpr_(const OpNode* node) {
+    LOG(WARNING) << "VISIT OpNode";
+  }
+  void VisitExpr_(const TupleGetItemNode* node) {
+    LOG(WARNING) << "VISIT TupleGetItemNode";
+  }
+  void VisitExpr_(const RefCreateNode* node) {
+    LOG(WARNING) << "VISIT RefCreateNode";
+  }
+  void VisitExpr_(const RefReadNode* node) {
+    LOG(WARNING) << "VISIT RefReadNode";
+  }
+  void VisitExpr_(const RefWriteNode* node) {
+    LOG(WARNING) << "VISIT RefWriteNode";
+  }
+  void VisitExpr_(const ConstructorNode* node) {
+    LOG(WARNING) << "VISIT ConstructorNode";
+  }
+  void VisitExpr_(const MatchNode* node) {
+    LOG(WARNING) << "VISIT MatchNode";
+  }
 
 private:
   void setup_args(Function fn, size_t index, const std::string& name) {
-    LOG(WARNING) << "setup args";
+    LOG(WARNING) << "setup_args " << name;
     if (arg_map_.size() < (index - 1))
       arg_map_.resize(index - 1);
     auto& args = arg_map_[index-2];
     PoplarFunctionInfo pfi;
     pfi.program_index = index;
     for (const auto& it : fn->params) {
-      args.push_back(curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR,
-					it->vid->name_hint.c_str()));
+      auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, it->vid->name_hint.c_str());
+      curg_->setTileMapping(v, 0);
+      args.push_back(v);
 	  pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
 	  pfi.input_channels.push_back(it->vid->name_hint);
     }
     // Last is the output
-    args.push_back(curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR,
-				      "fn_output"));
+    auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, "fn_output");
+    curg_->setTileMapping(v, 0);
+    args.push_back(v);
 	pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
     pfi.output_channel = "fn_output";
     poplar_function_info[name] = pfi;
@@ -200,6 +241,7 @@ private:
 
   poplar::Graph* curg_;
   poplar::program::Program* curprog_;
+  int curr_index_;
   std::vector<poplar::program::Program>* progs_;
   std::map<Function, size_t> prog_map_;
   std::vector<std::vector<poplar::Tensor>> arg_map_;
@@ -211,6 +253,7 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
   // XXX: We need some way for the user to configure this
   poplar::Target t = poplar::Target::createIPUTarget(1, "ipu1");
   poplar::Graph g(t);
+  popops::addCodelets(g);
   PoplarCodeGen codegen;
   auto progs = codegen.run(g, ref);
   // XXX: This needs to be filled in

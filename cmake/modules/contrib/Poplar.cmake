@@ -18,11 +18,13 @@
 if(USE_POPLAR)
   message(STATUS "Build with contrib.poplar")
   find_library(EXTERN_LIBRARY_POPLAR poplar)
+  find_library(EXTERN_LIBRARY_POPOPS popops)
   file(GLOB POPLAR_CONTRIB_SRC src/runtime/contrib/poplar/*.cc)
   file(GLOB POPLAR_RELAY_CONTRIB_SRC src/relay/backend/contrib/poplar/codegen.cc)
   list(APPEND COMPILER_SRCS ${POPLAR_RELAY_CONTRIB_SRC})
   # Maybe link with poplibs?
   list(APPEND TVM_LINKER_LIBS ${EXTERN_LIBRARY_POPLAR})
+  list(APPEND TVM_LINKER_LIBS ${EXTERN_LIBRARY_POPOPS})
 
   list(APPEND RUNTIME_SRCS ${POPLAR_CONTRIB_SRC})
   list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_POPLAR})

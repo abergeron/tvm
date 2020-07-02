@@ -36,8 +36,9 @@ def check_result(mod, map_inputs, out_shape, result, tol=1e-5, target="llvm",
         with tvm.transform.PassContext(opt_level=3,
                                        disabled_pass=["AlterOpLayout"]):
             exe = relay.vm.compile(mod, target=target)
+
         code, lib = exe.save()
-        # lib = update_lib(lib)
+        lib = update_lib(lib)
         exe = runtime.vm.Executable.load_exec(code, lib)
         vm = runtime.vm.VirtualMachine(exe)
         vm.init(ctx)
@@ -82,4 +83,4 @@ def test_add_op_scalar():
     mod = tvm.IRModule.from_expr(call)
     x_data = np.array(10.0, dtype='float32')
     y_data = np.array(1.0, dtype='float32')
-    check_result(mod, {"x": x_data, "y": y_data}, (), x_data + y_data, target='ipu')
+    check_result(mod, {"x": x_data, "y": y_data}, (), x_data + y_data, target='llvm')

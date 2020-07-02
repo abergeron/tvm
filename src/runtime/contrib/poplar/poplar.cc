@@ -44,7 +44,7 @@ class PoplarWrappedFunc;
 class PoplarModule : public ModuleNode {
 public:
   explicit PoplarModule(poplar::Executable&& exe, const std::unordered_map<std::string, PoplarFunctionInfo>& fmap) : eng_(std::move(exe)), fmap_(fmap) {
-    LOG(WARNING) << "new poplar module " << fmap.size();
+    LOG(WARNING) << "PoplarModule(" << fmap.size() << " function(s))";
   }
 
   const char* type_key() const { return "poplar"; }
