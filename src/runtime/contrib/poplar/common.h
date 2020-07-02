@@ -15,26 +15,23 @@ namespace contrib {
 
 class IPUThreadEntry {
 public:
- IPUThreadEntry() : active_engine_(nullptr) {}
+ IPUThreadEntry() : valid_(false), active_engine_(nullptr) {}
 
   static IPUThreadEntry* ThreadLocal() {
     return dmlc::ThreadLocalStore<IPUThreadEntry>::Get();
   }
 
-  bool valid() {
-    return (&device_.getImpl() == nullptr);
-  }
-
   void set_device(poplar::Device&& dev) {
-    if (valid())
+    if (valid_)
       device_.detach();
     device_ = std::move(dev);
     device_.attach();
+    valid_ = true;
     active_engine_ = nullptr;
   }
 
   void set_active_engine(poplar::Engine* eng) {
-    CHECK(valid()) << "Set an engine on an invalid device";
+    CHECK(valid_) << "Set an engine on an invalid device";
     if (eng != active_engine_) {
       eng->load(device_);
       active_engine_ = eng;
@@ -42,13 +39,18 @@ public:
   }
 
  private:
+  bool valid_;
   poplar::Device device_;
   poplar::Engine *active_engine_;
 };
 
 class IPUDeviceAPI final : public DeviceAPI {
 public:
-  IPUDeviceAPI() : m_(poplar::DeviceManager::createDeviceManager()) {}
+  IPUDeviceAPI() : m_(poplar::DeviceManager::createDeviceManager()) {
+    // XXX: Hard-code this for now, don't use from multiple threads
+    IPUThreadEntry* t = GetThreadEntry();
+    t->set_device(m_.getDevice(0));
+  }
 
   void SetDevice(TVMContext ctx) final {
     CHECK_LT(ctx.device_id, m_.getNumDevices()) << "Invalid device id " << ctx.device_id;
