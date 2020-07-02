@@ -76,12 +76,18 @@ public:
     progs_ = &progs;
 
     if (ref->IsInstance<FunctionNode>()) {
+      LOG(WARNING) << "function node";
+      Function f = Downcast<Function>(ref);
+      auto fname = GetExtSymbol(f);
+      prog_map_[f] = 2;
       progs[2] = poplar::program::Sequence();
+      setup_args(f, 2, fname);
       curprog_ = &progs[2];
-      this->VisitExpr(Downcast<Function>(ref));
+      this->VisitExpr(f);
       curprog_ = nullptr;
 
     } else if (ref->IsInstance<IRModuleNode>()) {
+      LOG(WARNING) << "irmodule node";
       IRModule mod = Downcast<IRModule>(ref);
 
       Function main = Downcast<Function>(mod->Lookup("main"));
@@ -130,6 +136,19 @@ public:
     return progs;
   }
 
+  /*!
+   * \brief Get the external symbol of the Relay function name.
+   *
+   * \param func The provided function.
+   *
+   * \return An external symbol.
+   */
+  std::string GetExtSymbol(const Function& func) const {
+    const auto name_node = func->GetAttr<String>(tvm::attr::kGlobalSymbol);
+    CHECK(name_node.defined()) << "Fail to retrieve external symbol.";
+    return std::string(name_node.value());
+  }
+
   void VisitExpr_(const VarNode* node) {}
   void VisitExpr_(const GlobalVarNode* node) {}
   void VisitExpr_(const ConstantNode* node) {}
@@ -159,6 +178,7 @@ public:
 
 private:
   void setup_args(Function fn, size_t index, const std::string& name) {
+    LOG(WARNING) << "setup args";
     if (arg_map_.size() < (index - 1))
       arg_map_.resize(index - 1);
     auto& args = arg_map_[index-2];
