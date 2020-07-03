@@ -51,7 +51,6 @@ public:
     // XXX: Hard-code this for now, don't use from multiple threads
     IPUThreadEntry* t = GetThreadEntry();
     bool use_model = false;
-    int num_dev = 1;
     char* tmp = getenv("TVM_POPLAR_USE_MODEL");
 
     if (tmp != NULL)
