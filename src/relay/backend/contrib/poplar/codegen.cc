@@ -15,6 +15,7 @@
 #include "../../utils.h"
 
 #include "../../../../runtime/contrib/poplar/fn_info.h"
+#include "../../../../runtime/contrib/poplar/common.h"
 
 namespace tvm {
 namespace relay {
@@ -82,8 +83,10 @@ public:
       Function f = Downcast<Function>(ref);
       auto fname = GetExtSymbol(f);
       prog_map_[f] = 2;
-      progs[2] = poplar::program::Sequence();
+      poplar::program::Sequence seq;
+      progs[2] = seq;
       setup_args(f, 2, fname);
+
       curprog_ = &progs[2];
       curr_index_ = 2;
       this->VisitExpr(f);
@@ -130,9 +133,7 @@ public:
       }
     }
 
-
     // Make the programs to copy inputs/outputs
-    
 
     prog_map_.clear();
     progs_ = nullptr;
@@ -175,9 +176,23 @@ public:
       auto& lhs = args[0];
       auto& rhs = args[1];
       auto& ret = args[2];
+
       auto seq_ = (poplar::program::Sequence*)curprog_;
+
+      if (curr_index_ - 2 == 0) {
+        // We are in the main function. We must connect input streams to function arguments.
+        auto& streams = stream_map_[curr_index_ - 2];
+        seq_->add(poplar::program::Copy(streams[0], lhs));
+        seq_->add(poplar::program::Copy(streams[1], rhs));
+        seq_->add(poplar::program::PrintTensor("lhs", lhs));
+        seq_->add(poplar::program::PrintTensor("rhs", rhs));
+        // And we must connect function return value to an output read tensor.
+        curg_->createHostRead("fn_output_read", ret);
+      }
+
       auto res = popops::add(*curg_, lhs, rhs, *seq_, "Add");
       seq_->add(poplar::program::Copy(res, ret));
+      seq_->add(poplar::program::PrintTensor("ret", ret));
       LOG(WARNING) << "VISIT op +";
     } else if (IsOp(call, "subtract")) {
       LOG(WARNING) << "VISIT op -";
@@ -221,20 +236,29 @@ private:
     if (arg_map_.size() < (index - 1))
       arg_map_.resize(index - 1);
     auto& args = arg_map_[index-2];
+
+    if (stream_map_.size() < (index - 1))
+      stream_map_.resize(index - 1);
+    auto& streams = stream_map_[index - 2];
+
     PoplarFunctionInfo pfi;
     pfi.program_index = index;
     for (const auto& it : fn->params) {
-      auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, it->vid->name_hint.c_str());
+      std::string argName(it->vid->name_hint);
+      LOG(WARNING) << argName;
+      auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, argName.c_str());
+      auto stream = curg_->addHostToDeviceFIFO(argName + "-input-stream", poplar::FLOAT, 1);
       curg_->setTileMapping(v, 0);
       args.push_back(v);
+      streams.push_back(stream);
 	  pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
-	  pfi.input_channels.push_back(it->vid->name_hint);
+	  pfi.input_channels.push_back(argName);
     }
     // Last is the output
     auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, "fn_output");
     curg_->setTileMapping(v, 0);
     args.push_back(v);
-	pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
+    pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
     pfi.output_channel = "fn_output";
     poplar_function_info[name] = pfi;
   }
@@ -245,13 +269,15 @@ private:
   std::vector<poplar::program::Program>* progs_;
   std::map<Function, size_t> prog_map_;
   std::vector<std::vector<poplar::Tensor>> arg_map_;
+  std::vector<std::vector<poplar::DataStream>> stream_map_;
 public:
   std::unordered_map<std::string, PoplarFunctionInfo> poplar_function_info;
 };
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
   // XXX: We need some way for the user to configure this
-  poplar::Target t = poplar::Target::createIPUTarget(1, "ipu1");
+  // poplar::Target t = poplar::Target::createIPUTarget(1, "ipu1");
+  poplar::Target t = tvm::runtime::contrib::IPUDeviceAPI::Global()->getTarget();
   poplar::Graph g(t);
   popops::addCodelets(g);
   PoplarCodeGen codegen;

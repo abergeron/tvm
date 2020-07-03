@@ -8,6 +8,7 @@
 #include <poplar/Engine.hpp>
 #include <poplar/Device.hpp>
 #include <poplar/DeviceManager.hpp>
+#include <poplar/IPUModel.hpp>
 
 namespace tvm {
 namespace runtime {
@@ -38,6 +39,10 @@ public:
     }
   }
 
+  poplar::Device& get_device() {
+    return device_;
+  }
+
  private:
   bool valid_;
   poplar::Device device_;
@@ -48,8 +53,13 @@ class IPUDeviceAPI final : public DeviceAPI {
 public:
   IPUDeviceAPI() : m_(poplar::DeviceManager::createDeviceManager()) {
     // XXX: Hard-code this for now, don't use from multiple threads
+    poplar::IPUModel ipuModel;
     IPUThreadEntry* t = GetThreadEntry();
-    t->set_device(m_.getDevice(0));
+    t->set_device(ipuModel.createDevice());
+  }
+
+  poplar::Target getTarget() {
+    return GetThreadEntry()->get_device().getTarget();
   }
 
   void SetDevice(TVMContext ctx) final {

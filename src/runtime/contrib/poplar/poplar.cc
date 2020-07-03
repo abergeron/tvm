@@ -86,15 +86,27 @@ public:
   void operator()(TVMArgs args, TVMRetValue* rv, void** void_args) const {
     m_->ensure_current();
 
+    for (int i = 0; i < args.num_args; ++i) {
+      TVM_CHECK_TYPE_CODE(args.type_codes[i], kTVMNDArrayHandle);
+    }
+
     // Setup arguments
     int i = 0;
     for (const auto& it: info_.input_channels) {
-      m_->eng_.connectStream(it, void_args[i++]);
+      int index = i++;
+      // auto val = static_cast<DLTensor*>(args[i++].value().v_handle);
+      // auto val = NDArray(NDArray::FFIDataFromHandle(static_cast<TVMArrayHandle>(args[index].value().v_handle)));;
+      NDArray val = args[index];
+      LOG(WARNING) << "arg " << index << " " << val.DataType() << " " << *((float*)val->data);
+      m_->eng_.connectStream(it + "-input-stream", val->data);
     }
-    m_->eng_.connectStream(info_.output_channel, void_args[i]);
+    NDArray ret = args[i];
+    // m_->eng_.connectStream(info_.output_channel + "-input-stream", ret->data);
 
     // run the function;
     m_->eng_.run(info_.program_index);
+    LOG(WARNING) << "ret " << ret.DataType() << " " << *((float*)ret->data);
+    m_->eng_.readTensor("fn_output_read", ret->data);
   }
 
 private:
