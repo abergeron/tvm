@@ -43,9 +43,7 @@ class PoplarWrappedFunc;
 
 class PoplarModule : public ModuleNode {
 public:
-  explicit PoplarModule(poplar::Executable&& exe, const std::unordered_map<std::string, PoplarFunctionInfo>& fmap) : eng_(std::move(exe)), fmap_(fmap) {
-    LOG(WARNING) << "PoplarModule(" << fmap.size() << " function(s))";
-  }
+  explicit PoplarModule(poplar::Executable&& exe, const std::unordered_map<std::string, PoplarFunctionInfo>& fmap) : eng_(std::move(exe)), fmap_(fmap) {}
 
   const char* type_key() const { return "poplar"; }
 
@@ -86,15 +84,24 @@ public:
   void operator()(TVMArgs args, TVMRetValue* rv, void** void_args) const {
     m_->ensure_current();
 
+    for (int i = 0; i < args.num_args; ++i) {
+      TVM_CHECK_TYPE_CODE(args.type_codes[i], kTVMNDArrayHandle);
+    }
+
     // Setup arguments
     int i = 0;
     for (const auto& it: info_.input_channels) {
-      m_->eng_.connectStream(it, void_args[i++]);
+      int index = i++;
+      NDArray arg = args[index];
+      m_->eng_.connectStream(it + "-input-stream", arg->data);
     }
-    m_->eng_.connectStream(info_.output_channel, void_args[i]);
 
     // run the function;
     m_->eng_.run(info_.program_index);
+
+    // Get function result.
+    NDArray ret = args[i];
+    m_->eng_.readTensor("fn_output_read", ret->data);
   }
 
 private:

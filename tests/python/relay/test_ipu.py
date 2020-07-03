@@ -42,6 +42,12 @@ def test_add_op_scalar():
     func = func.with_attr("global_symbol", "main")
     call = relay.Call(func, [x, y])
     mod = tvm.IRModule.from_expr(call)
-    x_data = np.array(10.0, dtype='float32')
-    y_data = np.array(1.0, dtype='float32')
-    check_result(mod, {"x": x_data, "y": y_data}, (), x_data + y_data, target='llvm')
+    for val_x, val_y in (
+            (10, 1),
+            (-1, 1),
+            (3.5, 4.7),
+            (-2, 17.4)
+    ):
+        x_data = np.array(val_x, dtype='float32')
+        y_data = np.array(val_y, dtype='float32')
+        check_result(mod, {"x": x_data, "y": y_data}, (), x_data + y_data, target='llvm')
