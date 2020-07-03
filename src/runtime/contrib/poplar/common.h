@@ -39,10 +39,6 @@ public:
     }
   }
 
-  poplar::Device& get_device() {
-    return device_;
-  }
-
  private:
   bool valid_;
   poplar::Device device_;
@@ -54,13 +50,19 @@ public:
   IPUDeviceAPI() : m_(poplar::DeviceManager::createDeviceManager()) {
     // XXX: Hard-code this for now, don't use from multiple threads
     IPUThreadEntry* t = GetThreadEntry();
-    t->set_device(m_.getDevice(0));
-    // poplar::IPUModel ipuModel;
-    // t->set_device(ipuModel.createDevice());
-  }
+    bool use_model = false;
+    int num_dev = 1;
+    char* tmp = getenv("TVM_POPLAR_USE_MODEL");
 
-  poplar::Target getTarget() {
-    return GetThreadEntry()->get_device().getTarget();
+    if (tmp != NULL)
+      use_model = bool(atoi(tmp));
+
+    if (!use_model) {
+      t->set_device(m_.getDevice(0));
+    } else {
+      poplar::IPUModel m;
+      t->set_device(m.createDevice());
+    }
   }
 
   void SetDevice(TVMContext ctx) final {

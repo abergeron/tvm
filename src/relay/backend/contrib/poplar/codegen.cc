@@ -15,7 +15,6 @@
 #include "../../utils.h"
 
 #include "../../../../runtime/contrib/poplar/fn_info.h"
-#include "../../../../runtime/contrib/poplar/common.h"
 
 namespace tvm {
 namespace relay {
@@ -264,8 +263,12 @@ public:
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
   // XXX: We need some way for the user to configure this
-  // XXX: This allow to easy change from IPUModel to IPU real device by just modifying one line in poplar.cc:
-  poplar::Target t = tvm::runtime::contrib::IPUDeviceAPI::Global()->getTarget();
+  int num_ipu = 1;
+  char* tmp = getenv("TVM_POPLAR_NUM_IPU");
+  if (tmp != NULL)
+    num_ipu = std::atoi(tmp);
+
+  poplar::Target t = poplar::Target::createIPUTarget(num_ipu, "ipu1");
   poplar::Graph g(t);
   popops::addCodelets(g);
   PoplarCodeGen codegen;

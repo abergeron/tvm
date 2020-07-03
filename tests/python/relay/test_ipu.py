@@ -13,6 +13,11 @@ import numpy as np
 
 def check_result(mod, map_inputs, out_shape, result, tol=1e-5, target="llvm",
                  ctx=tvm.cpu()):
+    import os
+
+    # Don't use anything other than '1' for the num, for now.
+    os.environ['TVM_POPLAR_NUM_IPU'] = '1'
+    os.environ['TVM_POPLAR_USE_MODEL'] = '0'
 
     def check_vm_result():
         with tvm.transform.PassContext(opt_level=3,
