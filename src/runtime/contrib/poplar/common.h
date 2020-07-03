@@ -53,9 +53,10 @@ class IPUDeviceAPI final : public DeviceAPI {
 public:
   IPUDeviceAPI() : m_(poplar::DeviceManager::createDeviceManager()) {
     // XXX: Hard-code this for now, don't use from multiple threads
-    poplar::IPUModel ipuModel;
     IPUThreadEntry* t = GetThreadEntry();
-    t->set_device(ipuModel.createDevice());
+    t->set_device(m_.getDevice(0));
+    // poplar::IPUModel ipuModel;
+    // t->set_device(ipuModel.createDevice());
   }
 
   poplar::Target getTarget() {
