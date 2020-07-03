@@ -43,9 +43,7 @@ class PoplarWrappedFunc;
 
 class PoplarModule : public ModuleNode {
 public:
-  explicit PoplarModule(poplar::Executable&& exe, const std::unordered_map<std::string, PoplarFunctionInfo>& fmap) : eng_(std::move(exe)), fmap_(fmap) {
-    LOG(WARNING) << "PoplarModule(" << fmap.size() << " function(s))";
-  }
+  explicit PoplarModule(poplar::Executable&& exe, const std::unordered_map<std::string, PoplarFunctionInfo>& fmap) : eng_(std::move(exe)), fmap_(fmap) {}
 
   const char* type_key() const { return "poplar"; }
 
@@ -94,18 +92,15 @@ public:
     int i = 0;
     for (const auto& it: info_.input_channels) {
       int index = i++;
-      // auto val = static_cast<DLTensor*>(args[i++].value().v_handle);
-      // auto val = NDArray(NDArray::FFIDataFromHandle(static_cast<TVMArrayHandle>(args[index].value().v_handle)));;
-      NDArray val = args[index];
-      LOG(WARNING) << "arg " << index << " " << val.DataType() << " " << *((float*)val->data);
-      m_->eng_.connectStream(it + "-input-stream", val->data);
+      NDArray arg = args[index];
+      m_->eng_.connectStream(it + "-input-stream", arg->data);
     }
-    NDArray ret = args[i];
-    // m_->eng_.connectStream(info_.output_channel + "-input-stream", ret->data);
 
     // run the function;
     m_->eng_.run(info_.program_index);
-    LOG(WARNING) << "ret " << ret.DataType() << " " << *((float*)ret->data);
+
+    // Get function result.
+    NDArray ret = args[i];
     m_->eng_.readTensor("fn_output_read", ret->data);
   }
 
