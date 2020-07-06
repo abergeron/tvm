@@ -25,6 +25,8 @@ struct PoplarFunctionInfo {
   bool Load(dmlc::Stream* reader);
 };
 
+ using pop_fn_info = std::unordered_map<std::string, PoplarFunctionInfo>;
+
 }
 }
 }
