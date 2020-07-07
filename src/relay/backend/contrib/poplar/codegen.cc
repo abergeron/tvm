@@ -137,7 +137,8 @@ public:
   }
 
   void VisitExpr_(const VarNode* node) {
-    CHECK(false) << "Seen a VarNode\n";
+    // Safety check to make sure everything is ok.
+    CHECK(expr_map_.find(node) != expr_map_.end());
   }
   void VisitExpr_(const GlobalVarNode* node) {
     CHECK(false) << "Seen a GlobalVarNode\n";
@@ -153,6 +154,10 @@ public:
     this->VisitExpr(node->body);
   }
   void VisitExpr_(const CallNode* call) {
+    // We need to visit expressions first to populate the map
+    for (const auto& a : call->args) {
+      this->VisitExpr(a);
+    }
     if (const auto* func = call->op.as<FunctionNode>()) {
       // function call
       CHECK(false) << "not supported for now";
