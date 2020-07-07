@@ -151,16 +151,27 @@ public:
     this->VisitExpr(node->body);
   }
   void VisitExpr_(const CallNode* call) {
-    if (IsOp(call, "add")) {
-      CHECK_EQ(call->args.size(), 2);
-      expr_map_[call] =
-	popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *static_cast<poplar::program::Sequence*>(curp_), "Add");
-    } else if (IsOp(call, "subtract")) {
-      LOG(WARNING) << "VISIT op -";
-    } else if (IsOp(call, "multiply")) {
-      LOG(WARNING) << "VISIT op *";
+    if (const auto* func = call->op.as<FunctionNode>()) {
+      // function call
+      CHECK(false) << "not supported for now";
     } else {
-      LOG(FATAL) << "Unrecognized op";
+      // it's an op
+      auto* curseq = static_cast<poplar::program::Sequence*>(curp_);
+      if (IsOp(call, "add")) {
+	CHECK_EQ(call->args.size(), 2);
+	expr_map_[call] =
+	  popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *curseq);
+      } else if (IsOp(call, "subtract")) {
+	LOG(WARNING) << "VISIT op -";
+      } else if (IsOp(call, "multiply")) {
+	LOG(WARNING) << "VISIT op *";
+      } else if (IsOp(call, "nn.softmax")) {
+	CHECK_EQ(call->args.size(), 1);
+	expr_map_[call] =
+	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::SOFTMAX, expr_map_[call->args[0].get()], *curseq);
+      } else {
+	LOG(FATAL) << "Unrecognized op: " << PrettyPrint(call->op);
+      }
     }
   }
   void VisitExpr_(const LetNode* node) {
