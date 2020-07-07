@@ -74,7 +74,8 @@ static std::vector<size_t> to_poplar_shape(const Type& t) {
   CHECK(tt != nullptr) << "Only support tensor types for now.\n";
   std::vector<size_t> res;
   for (const auto& it : tt->shape) {
-    // XXX: Figure out how to convert a PrimExpr to size_t.
+    IntImm i = Downcast<IntImm>(it);
+    res.push_back(i->value);
   }
   return res;
 }
@@ -119,8 +120,6 @@ public:
 	  this->fill_fn_info(f, name_node.value());
       }
     }
-
-    // XXX: Fill in PoplarFunctionInfo + make ext calling programs
 
     // Clear temp state
     prog_map_.clear();
@@ -239,7 +238,6 @@ private:
 };
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
-  // XXX: We need some way for the user to configure this
   int num_ipu = 1;
   bool use_model = false;
   char* tmp = getenv("TVM_POPLAR_NUM_IPU");
