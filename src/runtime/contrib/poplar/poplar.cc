@@ -81,7 +81,7 @@ class PoplarWrappedFunc {
 public:
   PoplarWrappedFunc(PoplarModule* m, PoplarFunctionInfo& info, ObjectPtr<Object> sptr) : m_(m), info_(info), sptr_(sptr) {}
 
-  void operator()(TVMArgs args, TVMRetValue* rv, void** void_args) const {
+  void operator()(TVMArgs args, TVMRetValue* rv) const {
     m_->ensure_current();
 
     for (int i = 0; i < args.num_args; ++i) {
@@ -93,7 +93,7 @@ public:
     for (const auto& it: info_.input_channels) {
       int index = i++;
       NDArray arg = args[index];
-      m_->eng_.connectStream(it + "-input-stream", arg->data);
+      m_->eng_.writeTensor(it, arg->data);
     }
 
     // run the function;
@@ -101,7 +101,7 @@ public:
 
     // Get function result.
     NDArray ret = args[i];
-    m_->eng_.readTensor("fn_output_read", ret->data);
+    m_->eng_.readTensor(info_.output_channel, ret->data);
   }
 
 private:
@@ -129,7 +129,7 @@ PackedFunc PoplarModule::GetFunction(const std::string& name,
   }
 
   PoplarWrappedFunc f(this, it->second, sptr_to_self);
-  return PackFuncVoidAddr(f, it->second.arg_types);
+  return PackedFunc(f);
 }
 
 TVM_REGISTER_GLOBAL("module.poplar_module_create")
@@ -146,13 +146,8 @@ TVM_REGISTER_GLOBAL("module.poplar_module_create")
 
 
 void PoplarFunctionInfo::Save(dmlc::JSONWriter* writer) const {
-  std::vector<std::string> sarg_types(arg_types.size());
-  for (size_t i = 0; i < arg_types.size(); ++i) {
-    sarg_types[i] = DLDataType2String(arg_types[i]);
-  }
   writer->BeginObject();
   writer->WriteObjectKeyValue("program_index", program_index);
-  writer->WriteObjectKeyValue("arg_types", sarg_types);
   writer->WriteObjectKeyValue("input_channels", input_channels);
   writer->WriteObjectKeyValue("output_channel", output_channel);
   writer->EndObject();
@@ -160,29 +155,21 @@ void PoplarFunctionInfo::Save(dmlc::JSONWriter* writer) const {
 
 void PoplarFunctionInfo::Load(dmlc::JSONReader* reader) {
   dmlc::JSONObjectReadHelper helper;
-  std::vector<std::string> sarg_types;
   helper.DeclareField("program_index", &program_index);
-  helper.DeclareField("arg_types", &sarg_types);
   helper.DeclareField("input_channels", &input_channels);
   helper.DeclareField("output_channel", &output_channel);
   helper.ReadAllFields(reader);
-  arg_types.resize(sarg_types.size());
-  for (size_t i = 0; i < arg_types.size(); ++i) {
-    arg_types[i] = String2DLDataType(sarg_types[i]);
-  }
 }
 
 
 void PoplarFunctionInfo::Save(dmlc::Stream* writer) const {
   writer->Write(program_index);
-  writer->Write(arg_types);
   writer->Write(input_channels);
   writer->Write(output_channel);
 }
 
 bool PoplarFunctionInfo::Load(dmlc::Stream* reader) {
   if (!reader->Read(&program_index)) return false;
-  if (!reader->Read(&arg_types)) return false;
   if (!reader->Read(&input_channels)) return false;
   if (!reader->Read(&output_channel)) return false;
   return true;

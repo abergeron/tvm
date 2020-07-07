@@ -15,7 +15,6 @@ namespace contrib {
 struct PoplarFunctionInfo {
   public:
   int program_index;
-  std::vector<DLDataType> arg_types;
   std::vector<std::string> input_channels;
   std::string output_channel;
 
@@ -24,6 +23,8 @@ struct PoplarFunctionInfo {
   void Save(dmlc::Stream* writer) const;
   bool Load(dmlc::Stream* reader);
 };
+
+ using pop_fn_info = std::unordered_map<std::string, PoplarFunctionInfo>;
 
 }
 }

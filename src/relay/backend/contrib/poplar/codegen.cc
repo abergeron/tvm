@@ -23,12 +23,15 @@ namespace contrib {
 
 using namespace backend;
 
-using PoplarFunctionInfo = tvm::runtime::contrib::PoplarFunctionInfo;
+using tvm::runtime::contrib::PoplarFunctionInfo;
+using tvm::runtime::contrib::pop_fn_info;
 
-static poplar::Type to_poplar_type(DataType& dt) {
-  if (dt.lanes() != 1) {
+static poplar::Type to_poplar_dtype(const Type& t) {
+  const TensorTypeNode* tt = t.as<TensorTypeNode>();
+  CHECK(tt != nullptr) << "Only support tensor types for now.\n";
+  DataType dt = tt->dtype;
+  if (dt.lanes() != 1)
     LOG(FATAL) << "Poplar doesn't support multi-lane data types (for now)\n";
-  }
   switch (dt.code()) {
   case kDLInt:
     switch (dt.bits()) {
@@ -66,72 +69,67 @@ static poplar::Type to_poplar_type(DataType& dt) {
   LOG(FATAL) << "Unsupported data type for poplar:" << dt << "\n";
 }
 
+static std::vector<size_t> to_poplar_shape(const Type& t) {
+  const TensorTypeNode* tt = t.as<TensorTypeNode>();
+  CHECK(tt != nullptr) << "Only support tensor types for now.\n";
+  std::vector<size_t> res;
+  for (const auto& it : tt->shape) {
+    // XXX: Figure out how to convert a PrimExpr to size_t.
+  }
+  return res;
+}
+
+using pop_args = std::vector<poplar::Tensor>;
 
 class PoplarCodeGen : public ExprVisitor {
 public:
   explicit PoplarCodeGen() {}
 
-  std::vector<poplar::program::Program> run(poplar::Graph& g, const ObjectRef& ref) {
-    std::vector<poplar::program::Program> progs;
+  std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph& g, const ObjectRef& ref) {
     curg_ = &g;
-    progs_ = &progs;
 
     if (ref->IsInstance<FunctionNode>()) {
       Function f = Downcast<Function>(ref);
-      auto fname = GetExtSymbol(f);
-      progs.push_back(poplar::program::Sequence());
-      int index = progs.size() - 1;
-      prog_map_[f] = index;
-      setup_args(f, fname);
-
-      curr_index_ = index;
+      this->setup_fn(f, "");
       this->VisitExpr(f);
-      curr_index_ = -1;
+
+      const auto name_node = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
+      CHECK(name_node.defined()) << "Function doesn't have global symbol";
+      this->fill_fn_info(f, name_node.value());
 
     } else if (ref->IsInstance<IRModuleNode>()) {
       // This seems never executed for now, thus may not be up-to-date.
+      CHECK(false) << "Hit IRModule case\n";
 
       IRModule mod = Downcast<IRModule>(ref);
-      Function main = Downcast<Function>(mod->Lookup("main"));
-      progs.push_back(poplar::program::Sequence());
-      int index = progs.size() - 1;
-      prog_map_[main] = index;
-      setup_args(main, "main");
 
       // First map the functions to progams
       for (const auto& it : mod->functions) {
-        // We skip the "main" function since it was handled above
-
-        if (it.first->name_hint.compare("main") == 0)
-          continue;
-
         Function f = Downcast<Function>(it.second);
-        size_t index = progs.size();
-        progs.push_back(poplar::program::Sequence());
-        prog_map_[f] = index;
-        setup_args(f, it.first->name_hint);
+        this->setup_fn(f, it.first->name_hint);
       }
 
       // Then convert the functions
       for (const auto& it : mod->functions) {
-        // We skip the "main" function since it was handled above
-
-        if (it.first->name_hint.compare("main") == 0)
-          continue;
-
         Function f = Downcast<Function>(it.second);
-        curr_index_ = prog_map_[f];
         this->VisitExpr(f);
-        curr_index_ = -1;
+
+	const auto name_node = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
+	if (name_node.defined())
+	  this->fill_fn_info(f, name_node.value());
       }
     }
 
-    // Make the programs to copy inputs/outputs
+    // XXX: Fill in PoplarFunctionInfo + make ext calling programs
 
+    // Clear temp state
     prog_map_.clear();
-    progs_ = nullptr;
+    expr_map_.clear();
     curg_ = nullptr;
-    return progs;
+    curp_ = nullptr;
+
+    // This clears and returns the returned state
+    return std::make_pair(std::move(progs_), std::move(fn_info_));
   }
 
   /*!
@@ -156,34 +154,14 @@ public:
   void VisitExpr_(const TupleNode* node) {
   }
   void VisitExpr_(const FunctionNode* node) {
+    curp_ = static_cast<poplar::program::Sequence*>(&progs_[prog_map_[node]]);
     this->VisitExpr(node->body);
   }
   void VisitExpr_(const CallNode* call) {
     if (IsOp(call, "add")) {
       CHECK_EQ(call->args.size(), 2);
-      CHECK_GT(curr_index_, -1);
-      auto& args = arg_map_[curr_index_];
-      CHECK_EQ(args.size(), 3);
-      auto& lhs = args[0];
-      auto& rhs = args[1];
-      auto& ret = args[2];
-
-      auto seq_ = (poplar::program::Sequence*)(&(*progs_)[curr_index_]);
-
-      if (curr_index_ == 0) {
-        // We are in the main function. We must connect input streams to function arguments.
-        auto& streams = stream_map_[curr_index_];
-        seq_->add(poplar::program::Copy(streams[0], lhs));
-        seq_->add(poplar::program::Copy(streams[1], rhs));
-        seq_->add(poplar::program::PrintTensor("lhs", lhs));
-        seq_->add(poplar::program::PrintTensor("rhs", rhs));
-        // And we must connect function return value to the output read tensor.
-        curg_->createHostRead("fn_output_read", ret);
-      }
-
-      auto res = popops::add(*curg_, lhs, rhs, *seq_, "Add");
-      seq_->add(poplar::program::Copy(res, ret));
-      seq_->add(poplar::program::PrintTensor("ret", ret));
+      expr_map_[call] =
+	popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *static_cast<poplar::program::Sequence*>(curp_), "Add");
     } else if (IsOp(call, "subtract")) {
       LOG(WARNING) << "VISIT op -";
     } else if (IsOp(call, "multiply")) {
@@ -221,45 +199,43 @@ public:
   }
 
 private:
-  void setup_args(Function fn, const std::string& name) {
-    size_t index = prog_map_[fn];
-    if (arg_map_.size() < (index + 1))
-      arg_map_.resize(index + 1);
-    auto& args = arg_map_[index];
-
-    if (stream_map_.size() < (index + 1))
-      stream_map_.resize(index + 1);
-    auto& streams = stream_map_[index];
-
-    PoplarFunctionInfo pfi;
-    pfi.program_index = index;
+  void setup_fn(Function fn, const std::string& name) {
+    size_t index = progs_.size();
+    progs_.push_back(poplar::program::Sequence());
+    prog_map_[fn.get()] = index;
     for (const auto& it : fn->params) {
-      std::string argName(it->vid->name_hint);
-      auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, argName.c_str());
-      auto stream = curg_->addHostToDeviceFIFO(argName + "-input-stream", poplar::FLOAT, 1);
-      curg_->setTileMapping(v, 0);
-      args.push_back(v);
-      streams.push_back(stream);
-	  pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
-	  pfi.input_channels.push_back(argName);
+      expr_map_[it.get()] = curg_->addVariable(to_poplar_dtype(it->checked_type()),
+					       to_poplar_shape(it->checked_type()),
+					       poplar::VariableMappingMethod::LINEAR,
+					       it->vid->name_hint.c_str());
     }
-    // Last is the output
-    auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, "fn_output");
-    curg_->setTileMapping(v, 0);
-    args.push_back(v);
-    pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
-    pfi.output_channel = "fn_output";
-    poplar_function_info[name] = pfi;
   }
 
+  void fill_fn_info(const Function& f, const std::string& name) {
+    PoplarFunctionInfo& pfi = fn_info_[name];
+    pfi.program_index = prog_map_[f.get()];
+    size_t i = 0;
+    for (const auto& it : f->params) {
+      std::string sname = name + "_input" + std::to_string(i);
+      curg_->createHostWrite(sname, expr_map_[it.get()]);
+      pfi.input_channels.push_back(sname);
+      i++;
+    }
+    pfi.output_channel = name + "_output";
+    curg_->createHostRead(pfi.output_channel, expr_map_[f->body.get()]);
+  }
+
+  // temp state
   poplar::Graph* curg_;
-  std::map<Function, size_t> prog_map_;
-  std::vector<poplar::program::Program>* progs_;
-  std::vector<std::vector<poplar::Tensor>> arg_map_;
-  std::vector<std::vector<poplar::DataStream>> stream_map_;
-  int curr_index_;
-public:
-  std::unordered_map<std::string, PoplarFunctionInfo> poplar_function_info;
+  poplar::program::Sequence* curp_;
+
+  // Conversion state
+  std::unordered_map<const FunctionNode*, size_t> prog_map_;
+  std::unordered_map<const ExprNode*, poplar::Tensor> expr_map_;
+
+  // returned state
+  std::vector<poplar::program::Program> progs_;
+  pop_fn_info fn_info_;
 };
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
@@ -284,8 +260,9 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
   poplar::Graph g(t);
   popops::addCodelets(g);
   PoplarCodeGen codegen;
-  auto progs = codegen.run(g, ref);
-  std::unordered_map<std::string, PoplarFunctionInfo>& fn_map = codegen.poplar_function_info;
+  auto result = codegen.run(g, ref);
+  const auto& progs = result.first;
+  pop_fn_info& fn_map = result.second;
 
   // Compile
   poplar::Executable exe = poplar::compileGraph(g, progs);
