@@ -84,8 +84,6 @@ static std::vector<size_t> to_poplar_shape(const Type& t) {
   return res;
 }
 
-using pop_args = std::vector<poplar::Tensor>;
-
 class PoplarCodeGen : public ExprVisitor {
 public:
   explicit PoplarCodeGen() {}
@@ -139,12 +137,16 @@ public:
   }
 
   void VisitExpr_(const VarNode* node) {
+    CHECK(false) << "Seen a VarNode\n";
   }
   void VisitExpr_(const GlobalVarNode* node) {
+    CHECK(false) << "Seen a GlobalVarNode\n";
   }
   void VisitExpr_(const ConstantNode* node) {
+    CHECK(false) << "Seen a ConstantNode\n";
   }
   void VisitExpr_(const TupleNode* node) {
+    CHECK(false) << "Seen a TupleNode\n";
   }
   void VisitExpr_(const FunctionNode* node) {
     curp_ = static_cast<poplar::program::Sequence*>(&progs_[prog_map_[node]]);
