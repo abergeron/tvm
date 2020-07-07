@@ -90,8 +90,12 @@ public:
 
     if (ref->IsInstance<FunctionNode>()) {
       Function f = Downcast<Function>(ref);
-      setup_fn(f, "");
+      this->setup_fn(f, "");
       this->VisitExpr(f);
+
+      const auto name_node = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
+      CHECK(name_node.defined()) << "Function doesn't have global symbol";
+      this->fill_fn_info(f, name_node.value());
 
     } else if (ref->IsInstance<IRModuleNode>()) {
       // This seems never executed for now, thus may not be up-to-date.
@@ -102,13 +106,17 @@ public:
       // First map the functions to progams
       for (const auto& it : mod->functions) {
         Function f = Downcast<Function>(it.second);
-        setup_fn(f, it.first->name_hint);
+        this->setup_fn(f, it.first->name_hint);
       }
 
       // Then convert the functions
       for (const auto& it : mod->functions) {
         Function f = Downcast<Function>(it.second);
         this->VisitExpr(f);
+
+	const auto name_node = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
+	if (name_node.defined())
+	  this->fill_fn_info(f, name_node.value());
       }
     }
 
@@ -203,28 +211,19 @@ private:
     }
   }
 
-  /*
-  void setup_pfi();
-    PoplarFunctionInfo pfi;
-    pfi.program_index = index;
-    for (const auto& it : fn->params) {
-      std::string argName(it->vid->name_hint);
-      auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, argName.c_str());
-      auto stream = curg_->addHostToDeviceFIFO(argName + "-input-stream", poplar::FLOAT, 1);
-      args.push_back(v);
-      streams.push_back(stream);
-	  pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
-	  pfi.input_channels.push_back(argName);
+  void fill_fn_info(const Function& f, const std::string& name) {
+    PoplarFunctionInfo& pfi = fn_info_[name];
+    pfi.program_index = prog_map_[f.get()];
+    size_t i = 0;
+    for (const auto& it : f->params) {
+      std::string sname = name + "_input" + std::to_string(i);
+      curg_->createHostWrite(sname, expr_map_[it.get()]);
+      pfi.input_channels.push_back(sname);
+      i++;
     }
-    // Last is the output
-    auto v = curg_->addVariable(poplar::FLOAT, {}, poplar::VariableMappingMethod::LINEAR, "fn_output");
-    curg_->setTileMapping(v, 0);
-    args.push_back(v);
-    pfi.arg_types.push_back(DLDataType{kDLFloat, 32, 1});
-    pfi.output_channel = "fn_output";
-    poplar_function_info[name] = pfi;
+    pfi.output_channel = name + "_output";
+    curg_->createHostRead(pfi.output_channel, expr_map_[f->body.get()]);
   }
-  */
 
   // temp state
   poplar::Graph* curg_;
