@@ -8,6 +8,10 @@
 #include <popops/ElementWise.hpp>
 #include <popops/codelets.hpp>
 
+#include <popnn/codelets.hpp>
+#include <popnn/NonLinearityDef.hpp>
+#include <popnn/NonLinearity.hpp>
+
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
 #include <tvm/relay/type.h>
@@ -88,6 +92,9 @@ public:
 
   std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph& g, const ObjectRef& ref) {
     curg_ = &g;
+
+    popops::addCodelets(g);
+    popnn::addCodelets(g);
 
     if (ref->IsInstance<FunctionNode>()) {
       Function f = Downcast<Function>(ref);
@@ -256,7 +263,6 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
     t = poplar::Target::createIPUTarget(num_ipu, "ipu1");
   }
   poplar::Graph g(t);
-  popops::addCodelets(g);
   PoplarCodeGen codegen;
   auto result = codegen.run(g, ref);
   const auto& progs = result.first;
