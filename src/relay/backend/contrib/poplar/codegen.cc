@@ -176,6 +176,18 @@ public:
 	LOG(WARNING) << "VISIT op -";
       } else if (IsOp(call, "multiply")) {
 	LOG(WARNING) << "VISIT op *";
+      } else if (IsOp(call, "nn.batch_flatten")) {
+	CHECK_EQ(call->args.size(), 1);
+	const poplar::Tensor& arg = expr_map_[call->args[0].get()];
+	expr_map_[call] = arg.flatten(1, arg.rank());
+      } else if (IsOp(call, "nn.dense")) {
+	CHECK_EQ(call->args.size(), 2);
+	expr_map_[call] =
+	  poplin::matMul(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()].transpose(), *curseq);
+      } else if (IsOp(call, "nn.relu")) {
+	CHECK_EQ(call->args.size(), 1);
+	expr_map_[call] =
+	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::RELU, expr_map_[call->args[0].get()], *curseq);
       } else if (IsOp(call, "nn.softmax")) {
 	CHECK_EQ(call->args.size(), 1);
 	expr_map_[call] =
