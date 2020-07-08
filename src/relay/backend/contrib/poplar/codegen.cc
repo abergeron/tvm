@@ -12,6 +12,9 @@
 #include <popnn/NonLinearityDef.hpp>
 #include <popnn/NonLinearity.hpp>
 
+#include <poplin/codelets.hpp>
+#include <poplin/MatMul.hpp>
+
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
 #include <tvm/relay/type.h>
@@ -93,6 +96,7 @@ public:
 
     popops::addCodelets(g);
     popnn::addCodelets(g);
+    poplin::addCodelets(g);
 
     if (ref->IsInstance<FunctionNode>()) {
       Function f = Downcast<Function>(ref);
