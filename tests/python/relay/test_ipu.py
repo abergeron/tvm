@@ -12,6 +12,12 @@ from tvm.contrib import util
 from tvm import runtime
 import numpy as np
 
+def get_result(fn, params):
+    mod = tvm.IRModule.from_expr(fn)
+    e = relay.create_executor(kind='debug', mod=mod, ctx=tvm.cpu(), target="llvm")
+    return e.evaluate()(**params).asnumpy()
+
+
 def check_result(mod, map_inputs, out_shape, result, tol=1e-5, target="llvm",
                  ctx=tvm.cpu()):
     with tvm.transform.PassContext(opt_level=3,
@@ -53,6 +59,11 @@ def test_mlp():
     func = testing.mlp.get_net(1)
     wrap = wrap_fn(func, "pop_mlp")
     mod, params = testing.create_workload(wrap)
-    check_result(mod, params, (1, 10), 0)
+    input_data = np.random.uniform(size=image_shape).astype('float32')
+    params["data"] = input_data
 
+    # We use the original func here, not the poplar-tagged one
+    result = get_result(func, params)
+
+    check_result(mod, params, (1, 10), result)
     #benchmark_execution(mod, params, data_shape=image_shape, out_shape=(1, 10), model="mlp")
