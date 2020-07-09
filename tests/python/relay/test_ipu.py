@@ -12,6 +12,7 @@ from tvm.contrib import util
 from tvm import runtime
 import numpy as np
 
+
 def get_result(fn, params):
     mod = tvm.IRModule.from_expr(fn)
     e = relay.create_executor(kind='debug', mod=mod, ctx=tvm.cpu(), target="llvm")
@@ -66,4 +67,21 @@ def test_mlp():
     result = get_result(func, params)
 
     check_result(mod, params, (1, 10), result)
-    #benchmark_execution(mod, params, data_shape=image_shape, out_shape=(1, 10), model="mlp")
+
+
+def test_if():
+    i = relay.var('i', shape=[], dtype='int32')
+    sb = relay.ScopeBuilder()
+    with sb.if_scope(relay.greater_equal(i, relay.const(0, dtype='int32'))):
+        sb.ret(i)
+    with sb.else_scope():
+        one_more = relay.add(i, relay.const(1, dtype='int32'))
+        sb.ret(one_more)
+
+    func = relay.Function([i], sb.get())
+    wrap = wrap_fn(func, "pop_if")
+    mod = tvm.IRModule.from_expr(wrap)
+
+    check_result(mod, {'i': -2}, (), -1)
+    check_result(mod, {'i': 0}, (), 0)
+    check_result(mod, {'i': 2}, (), 2)
