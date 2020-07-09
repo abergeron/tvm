@@ -8,6 +8,13 @@
 #include <popops/ElementWise.hpp>
 #include <popops/codelets.hpp>
 
+#include <popnn/codelets.hpp>
+#include <popnn/NonLinearityDef.hpp>
+#include <popnn/NonLinearity.hpp>
+
+#include <poplin/codelets.hpp>
+#include <poplin/MatMul.hpp>
+
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
 #include <tvm/relay/type.h>
@@ -74,12 +81,11 @@ static std::vector<size_t> to_poplar_shape(const Type& t) {
   CHECK(tt != nullptr) << "Only support tensor types for now.\n";
   std::vector<size_t> res;
   for (const auto& it : tt->shape) {
-    // XXX: Figure out how to convert a PrimExpr to size_t.
+    IntImm i = Downcast<IntImm>(it);
+    res.push_back(i->value);
   }
   return res;
 }
-
-using pop_args = std::vector<poplar::Tensor>;
 
 class PoplarCodeGen : public ExprVisitor {
 public:
@@ -87,6 +93,10 @@ public:
 
   std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph& g, const ObjectRef& ref) {
     curg_ = &g;
+
+    popops::addCodelets(g);
+    popnn::addCodelets(g);
+    poplin::addCodelets(g);
 
     if (ref->IsInstance<FunctionNode>()) {
       Function f = Downcast<Function>(ref);
@@ -120,8 +130,6 @@ public:
       }
     }
 
-    // XXX: Fill in PoplarFunctionInfo + make ext calling programs
-
     // Clear temp state
     prog_map_.clear();
     expr_map_.clear();
@@ -132,42 +140,61 @@ public:
     return std::make_pair(std::move(progs_), std::move(fn_info_));
   }
 
-  /*!
-   * \brief Get the external symbol of the Relay function name.
-   *
-   * \param func The provided function.
-   *
-   * \return An external symbol.
-   */
-  std::string GetExtSymbol(const Function& func) const {
-    const auto name_node = func->GetAttr<String>(tvm::attr::kGlobalSymbol);
-    CHECK(name_node.defined()) << "Fail to retrieve external symbol.";
-    return std::string(name_node.value());
-  }
-
   void VisitExpr_(const VarNode* node) {
+    // Safety check to make sure everything is ok.
+    CHECK(expr_map_.find(node) != expr_map_.end());
   }
   void VisitExpr_(const GlobalVarNode* node) {
+    CHECK(false) << "Seen a GlobalVarNode\n";
   }
   void VisitExpr_(const ConstantNode* node) {
+    CHECK(false) << "Seen a ConstantNode\n";
   }
   void VisitExpr_(const TupleNode* node) {
+    CHECK(false) << "Seen a TupleNode\n";
   }
   void VisitExpr_(const FunctionNode* node) {
     curp_ = static_cast<poplar::program::Sequence*>(&progs_[prog_map_[node]]);
     this->VisitExpr(node->body);
   }
   void VisitExpr_(const CallNode* call) {
-    if (IsOp(call, "add")) {
-      CHECK_EQ(call->args.size(), 2);
-      expr_map_[call] =
-	popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *static_cast<poplar::program::Sequence*>(curp_), "Add");
-    } else if (IsOp(call, "subtract")) {
-      LOG(WARNING) << "VISIT op -";
-    } else if (IsOp(call, "multiply")) {
-      LOG(WARNING) << "VISIT op *";
+    // We need to visit expressions first to populate the map
+    for (const auto& a : call->args) {
+      this->VisitExpr(a);
+    }
+    if (const auto* func = call->op.as<FunctionNode>()) {
+      // function call
+      CHECK(false) << "not supported for now";
     } else {
-      LOG(FATAL) << "Unrecognized op";
+      // it's an op
+      auto* curseq = static_cast<poplar::program::Sequence*>(curp_);
+      if (IsOp(call, "add")) {
+	CHECK_EQ(call->args.size(), 2);
+	expr_map_[call] =
+	  popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *curseq);
+      } else if (IsOp(call, "subtract")) {
+	LOG(WARNING) << "VISIT op -";
+      } else if (IsOp(call, "multiply")) {
+	LOG(WARNING) << "VISIT op *";
+      } else if (IsOp(call, "nn.batch_flatten")) {
+	CHECK_EQ(call->args.size(), 1);
+	const poplar::Tensor& arg = expr_map_[call->args[0].get()];
+	expr_map_[call] = arg.flatten(1, arg.rank());
+      } else if (IsOp(call, "nn.dense")) {
+	CHECK_EQ(call->args.size(), 2);
+	expr_map_[call] =
+	  poplin::matMul(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()].transpose(), *curseq);
+      } else if (IsOp(call, "nn.relu")) {
+	CHECK_EQ(call->args.size(), 1);
+	expr_map_[call] =
+	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::RELU, expr_map_[call->args[0].get()], *curseq);
+      } else if (IsOp(call, "nn.softmax")) {
+	CHECK_EQ(call->args.size(), 1);
+	expr_map_[call] =
+	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::SOFTMAX, expr_map_[call->args[0].get()], *curseq);
+      } else {
+	LOG(FATAL) << "Unrecognized op: " << PrettyPrint(call->op);
+      }
     }
   }
   void VisitExpr_(const LetNode* node) {
@@ -239,7 +266,6 @@ private:
 };
 
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
-  // XXX: We need some way for the user to configure this
   int num_ipu = 1;
   bool use_model = false;
   char* tmp = getenv("TVM_POPLAR_NUM_IPU");
@@ -258,7 +284,6 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
     t = poplar::Target::createIPUTarget(num_ipu, "ipu1");
   }
   poplar::Graph g(t);
-  popops::addCodelets(g);
   PoplarCodeGen codegen;
   auto result = codegen.run(g, ref);
   const auto& progs = result.first;
