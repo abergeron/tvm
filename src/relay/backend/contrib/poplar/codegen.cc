@@ -15,6 +15,8 @@
 #include <poplin/codelets.hpp>
 #include <poplin/MatMul.hpp>
 
+#include <poputil/TileMapping.hpp>
+
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
 #include <tvm/relay/type.h>
@@ -148,7 +150,37 @@ public:
     CHECK(false) << "Seen a GlobalVarNode\n";
   }
   void VisitExpr_(const ConstantNode* node) {
-    CHECK(false) << "Seen a ConstantNode\n";
+    poplar::Type t = to_poplar_dtype(node->checked_type());
+    poplar::Tensor res;
+    if (t == poplar::CHAR || t == poplar::SIGNED_CHAR) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<int8_t*>(node->data->data));
+    } else if (t == poplar::UNSIGNED_CHAR) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<uint8_t*>(node->data->data));
+    } else if (t == poplar::SHORT) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<int16_t*>(node->data->data));
+    } else if (t == poplar::UNSIGNED_SHORT) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<uint16_t*>(node->data->data));
+    } else if (t == poplar::INT) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<int32_t*>(node->data->data));
+    } else if (t == poplar::UNSIGNED_INT) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<uint32_t*>(node->data->data));
+    } else if (t == poplar::HALF) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<uint16_t*>(node->data->data));
+    } else if (t == poplar::FLOAT) {
+      res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
+			       static_cast<float*>(node->data->data));
+    } else {
+      CHECK(false) << "Unhandled type in ConstantNode\n";
+    }
+    poputil::mapTensorLinearly(*curg_, res);
+    expr_map_[node] = res;
   }
   void VisitExpr_(const TupleNode* node) {
     CHECK(false) << "Seen a TupleNode\n";
@@ -167,11 +199,10 @@ public:
       CHECK(false) << "not supported for now";
     } else {
       // it's an op
-      auto* curseq = static_cast<poplar::program::Sequence*>(curp_);
       if (IsOp(call, "add")) {
 	CHECK_EQ(call->args.size(), 2);
 	expr_map_[call] =
-	  popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *curseq);
+	  popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *curp_);
       } else if (IsOp(call, "subtract")) {
 	LOG(WARNING) << "VISIT op -";
       } else if (IsOp(call, "multiply")) {
@@ -183,15 +214,19 @@ public:
       } else if (IsOp(call, "nn.dense")) {
 	CHECK_EQ(call->args.size(), 2);
 	expr_map_[call] =
-	  poplin::matMul(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()].transpose(), *curseq);
+	  poplin::matMul(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()].transpose(), *curp_);
       } else if (IsOp(call, "nn.relu")) {
 	CHECK_EQ(call->args.size(), 1);
 	expr_map_[call] =
-	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::RELU, expr_map_[call->args[0].get()], *curseq);
+	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::RELU, expr_map_[call->args[0].get()], *curp_);
       } else if (IsOp(call, "nn.softmax")) {
 	CHECK_EQ(call->args.size(), 1);
 	expr_map_[call] =
-	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::SOFTMAX, expr_map_[call->args[0].get()], *curseq);
+	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::SOFTMAX, expr_map_[call->args[0].get()], *curp_);
+      } else if (IsOp(call, "greater_equal")) {
+	CHECK_EQ(call->args.size(), 2);
+	expr_map_[call] =
+	  popops::gteq(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *curp_);
       } else {
 	LOG(FATAL) << "Unrecognized op: " << PrettyPrint(call->op);
       }
@@ -201,7 +236,26 @@ public:
     LOG(WARNING) << "VISIT LetNode";
   }
   void VisitExpr_(const IfNode* node) {
-    LOG(WARNING) << "VISIT IfNode";
+    auto* bak = curp_;
+    poplar::program::Sequence true_body;
+    poplar::program::Sequence false_body;
+    auto result = curg_->addVariable(to_poplar_dtype(node->checked_type()),
+				     to_poplar_shape(node->checked_type()),
+				     poplar::VariableMappingMethod::LINEAR, "");
+    this->VisitExpr(node->cond);
+
+    curp_ = &true_body;
+    this->VisitExpr(node->true_branch);
+    curp_->add(poplar::program::Copy(expr_map_[node->true_branch.get()], result));
+
+    curp_ = &false_body;
+    this->VisitExpr(node->false_branch);
+    curp_->add(poplar::program::Copy(expr_map_[node->false_branch.get()], result));
+
+    curp_ = bak;
+    curp_->add(poplar::program::If(expr_map_[node->cond.get()],
+				   true_body, false_body));
+    expr_map_[node] = result;
   }
   void VisitExpr_(const OpNode* node) {
     LOG(WARNING) << "VISIT OpNode";
