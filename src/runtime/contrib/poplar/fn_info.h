@@ -32,9 +32,16 @@ namespace tvm {
 namespace runtime {
 namespace contrib {
 
+// We define this special function info structure because we need
+// different things than what is in the regular FunctinInfo struct
 struct PoplarFunctionInfo {
  public:
+  // Poplar program are referenced by their index in the submitted
+  // program vector
   int program_index;
+  // Input and output are not blocks of memory, but rather streams
+  // that you write or read from (with some cooperation from the
+  // device)
   std::vector<std::string> input_channels;
   std::string output_channel;
 

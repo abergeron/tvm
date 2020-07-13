@@ -36,21 +36,35 @@ namespace tvm {
 namespace runtime {
 namespace contrib {
 
+// I'm not sure we need this, but it was inspired by the OpenCL code.
+
 class IPUThreadEntry {
  public:
-  IPUThreadEntry() : valid_(false), active_engine_(nullptr) {}
+ IPUThreadEntry() : active_engine_(nullptr), valid_(false) {}
 
   static IPUThreadEntry* ThreadLocal() { return dmlc::ThreadLocalStore<IPUThreadEntry>::Get(); }
 
+  /*!
+   * \brief Set the current device
+   * This can only be done by move since poplar::Device only supports that
+   */
   void set_device(poplar::Device&& dev) {
+    // We detach the previous device before since we don't want to hog
+    // all the devices
     if (valid_) device_.detach();
     device_ = std::move(dev);
+    // We need to attach to the device before doing anything useful.
     device_.attach();
     valid_ = true;
     active_engine_ = nullptr;
   }
 
   void set_active_engine(poplar::Engine* eng) {
+    // Only one engine can be ative (loaded) on a device at a time.
+    // If you loda a new one, the previous one is implicitely
+    // replaced.  We keep track of which one is active for function
+    // calls in order to avoid the reloading the engine every time
+    // which can be expansive.
     CHECK(valid_) << "Set an engine on an invalid device";
     if (eng != active_engine_) {
       eng->load(device_);
@@ -59,15 +73,27 @@ class IPUThreadEntry {
   }
 
  private:
-  bool valid_;
+  /*! The current device (might be the null device) */
   poplar::Device device_;
+  /*! The current active engine (optional) */
+  // We don't need to keep a hard reference to this because the only
+  // use we have for it is to compare pointer values.
   poplar::Engine* active_engine_;
+  /*! Is the current device a valid device (not the null one) */
+  bool valid_;
 };
 
+// We don't need this API implementation for the current relay backend
+// compiler use, but if we ever go into generating code for ops this
+// might be needed.
 class IPUDeviceAPI final : public DeviceAPI {
  public:
   IPUDeviceAPI() : m_(poplar::DeviceManager::createDeviceManager()) {
     // XXX: Hard-code this for now, don't use from multiple threads
+
+    // This is bad, but I didn't want to take time to figure out how
+    // to do it correctly.  We will need to remove all this code and
+    // do it properly before a PR.
     IPUThreadEntry* t = GetThreadEntry();
     bool use_model = false;
     char* tmp = getenv("TVM_POPLAR_USE_MODEL");
@@ -93,6 +119,8 @@ class IPUDeviceAPI final : public DeviceAPI {
   void CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset, size_t size,
                       TVMContext ctx_from, TVMContext ctx_to, DLDataType type_hint,
                       TVMStreamHandle stream) final;
+
+  // There is no support for streams
   void StreamSync(TVMContext ctx, TVMStreamHandle stream) final {}
 
   IPUThreadEntry* GetThreadEntry() { return IPUThreadEntry::ThreadLocal(); }
