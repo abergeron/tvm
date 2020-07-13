@@ -5,15 +5,15 @@
 #include <dmlc/io.h>
 #include <dmlc/json.h>
 
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace tvm {
 namespace runtime {
 namespace contrib {
 
 struct PoplarFunctionInfo {
-  public:
+ public:
   int program_index;
   std::vector<std::string> input_channels;
   std::string output_channel;
@@ -24,11 +24,11 @@ struct PoplarFunctionInfo {
   bool Load(dmlc::Stream* reader);
 };
 
- using pop_fn_info = std::unordered_map<std::string, PoplarFunctionInfo>;
+using pop_fn_info = std::unordered_map<std::string, PoplarFunctionInfo>;
 
-}
-}
-}
+}  // namespace contrib
+}  // namespace runtime
+}  // namespace tvm
 
 namespace dmlc {
 DMLC_DECLARE_TRAITS(has_saveload, ::tvm::runtime::contrib::PoplarFunctionInfo, true);

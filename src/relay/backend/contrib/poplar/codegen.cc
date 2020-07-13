@@ -1,30 +1,27 @@
-#include <poplar/Graph.hpp>
-#include <poplar/Target.hpp>
-#include <poplar/Program.hpp>
-#include <poplar/Type.hpp>
-#include <poplar/VariableMappingMethod.hpp>
-#include <poplar/Engine.hpp>
-#include <poplar/IPUModel.hpp>
-#include <popops/ElementWise.hpp>
-#include <popops/codelets.hpp>
-
-#include <popnn/codelets.hpp>
-#include <popnn/NonLinearityDef.hpp>
-#include <popnn/NonLinearity.hpp>
-
-#include <poplin/codelets.hpp>
-#include <poplin/MatMul.hpp>
-
-#include <poputil/TileMapping.hpp>
-
 #include <tvm/relay/expr_functor.h>
 #include <tvm/relay/transform.h>
 #include <tvm/relay/type.h>
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/object.h>
-#include "../../utils.h"
+
+#include <poplar/Engine.hpp>
+#include <poplar/Graph.hpp>
+#include <poplar/IPUModel.hpp>
+#include <poplar/Program.hpp>
+#include <poplar/Target.hpp>
+#include <poplar/Type.hpp>
+#include <poplar/VariableMappingMethod.hpp>
+#include <poplin/MatMul.hpp>
+#include <poplin/codelets.hpp>
+#include <popnn/NonLinearity.hpp>
+#include <popnn/NonLinearityDef.hpp>
+#include <popnn/codelets.hpp>
+#include <popops/ElementWise.hpp>
+#include <popops/codelets.hpp>
+#include <poputil/TileMapping.hpp>
 
 #include "../../../../runtime/contrib/poplar/fn_info.h"
+#include "../../utils.h"
 
 namespace tvm {
 namespace relay {
@@ -32,48 +29,47 @@ namespace contrib {
 
 using namespace backend;
 
-using tvm::runtime::contrib::PoplarFunctionInfo;
 using tvm::runtime::contrib::pop_fn_info;
+using tvm::runtime::contrib::PoplarFunctionInfo;
 
 static poplar::Type to_poplar_dtype(const Type& t) {
   const TensorTypeNode* tt = t.as<TensorTypeNode>();
   CHECK(tt != nullptr) << "Only support tensor types for now.\n";
   DataType dt = tt->dtype;
-  if (dt.lanes() != 1)
-    LOG(FATAL) << "Poplar doesn't support multi-lane data types (for now)\n";
+  if (dt.lanes() != 1) LOG(FATAL) << "Poplar doesn't support multi-lane data types (for now)\n";
   switch (dt.code()) {
-  case kDLInt:
-    switch (dt.bits()) {
-    case 32:
-      return poplar::INT;
-    case 16:
-      return poplar::SHORT;
-    case 8:
-      return poplar::SIGNED_CHAR;
-    }
-    break;
-  case kDLUInt:
-    switch (dt.bits()) {
-    case 32:
-      return poplar::UNSIGNED_INT;
-    case 16:
-      return poplar::UNSIGNED_SHORT;
-    case 8:
-      return poplar::UNSIGNED_CHAR;
-    case 1:
-      return poplar::BOOL;
-    }
-    break;
-  case kDLFloat:
-    switch(dt.bits()) {
-    case 32:
-      return poplar::FLOAT;
-    case 16:
-      return poplar::HALF;
-    }
-    break;
-  default:
-    break;
+    case kDLInt:
+      switch (dt.bits()) {
+        case 32:
+          return poplar::INT;
+        case 16:
+          return poplar::SHORT;
+        case 8:
+          return poplar::SIGNED_CHAR;
+      }
+      break;
+    case kDLUInt:
+      switch (dt.bits()) {
+        case 32:
+          return poplar::UNSIGNED_INT;
+        case 16:
+          return poplar::UNSIGNED_SHORT;
+        case 8:
+          return poplar::UNSIGNED_CHAR;
+        case 1:
+          return poplar::BOOL;
+      }
+      break;
+    case kDLFloat:
+      switch (dt.bits()) {
+        case 32:
+          return poplar::FLOAT;
+        case 16:
+          return poplar::HALF;
+      }
+      break;
+    default:
+      break;
   }
   LOG(FATAL) << "Unsupported data type for poplar:" << dt << "\n";
 }
@@ -90,10 +86,11 @@ static std::vector<size_t> to_poplar_shape(const Type& t) {
 }
 
 class PoplarCodeGen : public ExprVisitor {
-public:
+ public:
   explicit PoplarCodeGen() {}
 
-  std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph& g, const ObjectRef& ref) {
+  std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph& g,
+                                                                    const ObjectRef& ref) {
     curg_ = &g;
 
     popops::addCodelets(g);
@@ -126,9 +123,8 @@ public:
         Function f = Downcast<Function>(it.second);
         this->VisitExpr(f);
 
-	const auto name_node = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
-	if (name_node.defined())
-	  this->fill_fn_info(f, name_node.value());
+        const auto name_node = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
+        if (name_node.defined()) this->fill_fn_info(f, name_node.value());
       }
     }
 
@@ -146,45 +142,41 @@ public:
     // Safety check to make sure everything is ok.
     CHECK(expr_map_.find(node) != expr_map_.end());
   }
-  void VisitExpr_(const GlobalVarNode* node) {
-    CHECK(false) << "Seen a GlobalVarNode\n";
-  }
+  void VisitExpr_(const GlobalVarNode* node) { CHECK(false) << "Seen a GlobalVarNode\n"; }
   void VisitExpr_(const ConstantNode* node) {
     poplar::Type t = to_poplar_dtype(node->checked_type());
     poplar::Tensor res;
     if (t == poplar::CHAR || t == poplar::SIGNED_CHAR) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<int8_t*>(node->data->data));
+                               static_cast<int8_t*>(node->data->data));
     } else if (t == poplar::UNSIGNED_CHAR) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<uint8_t*>(node->data->data));
+                               static_cast<uint8_t*>(node->data->data));
     } else if (t == poplar::SHORT) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<int16_t*>(node->data->data));
+                               static_cast<int16_t*>(node->data->data));
     } else if (t == poplar::UNSIGNED_SHORT) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<uint16_t*>(node->data->data));
+                               static_cast<uint16_t*>(node->data->data));
     } else if (t == poplar::INT) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<int32_t*>(node->data->data));
+                               static_cast<int32_t*>(node->data->data));
     } else if (t == poplar::UNSIGNED_INT) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<uint32_t*>(node->data->data));
+                               static_cast<uint32_t*>(node->data->data));
     } else if (t == poplar::HALF) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<uint16_t*>(node->data->data));
+                               static_cast<uint16_t*>(node->data->data));
     } else if (t == poplar::FLOAT) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
-			       static_cast<float*>(node->data->data));
+                               static_cast<float*>(node->data->data));
     } else {
       CHECK(false) << "Unhandled type in ConstantNode\n";
     }
     poputil::mapTensorLinearly(*curg_, res);
     expr_map_[node] = res;
   }
-  void VisitExpr_(const TupleNode* node) {
-    CHECK(false) << "Seen a TupleNode\n";
-  }
+  void VisitExpr_(const TupleNode* node) { CHECK(false) << "Seen a TupleNode\n"; }
   void VisitExpr_(const FunctionNode* node) {
     curp_ = static_cast<poplar::program::Sequence*>(&progs_[prog_map_[node]]);
     this->VisitExpr(node->body);
@@ -200,48 +192,46 @@ public:
     } else {
       // it's an op
       if (IsOp(call, "add")) {
-	CHECK_EQ(call->args.size(), 2);
-	expr_map_[call] =
-	  popops::add(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *curp_);
+        CHECK_EQ(call->args.size(), 2);
+        expr_map_[call] = popops::add(*curg_, expr_map_[call->args[0].get()],
+                                      expr_map_[call->args[1].get()], *curp_);
       } else if (IsOp(call, "subtract")) {
-	LOG(WARNING) << "VISIT op -";
+        LOG(WARNING) << "VISIT op -";
       } else if (IsOp(call, "multiply")) {
-	LOG(WARNING) << "VISIT op *";
+        LOG(WARNING) << "VISIT op *";
       } else if (IsOp(call, "nn.batch_flatten")) {
-	CHECK_EQ(call->args.size(), 1);
-	const poplar::Tensor& arg = expr_map_[call->args[0].get()];
-	expr_map_[call] = arg.flatten(1, arg.rank());
+        CHECK_EQ(call->args.size(), 1);
+        const poplar::Tensor& arg = expr_map_[call->args[0].get()];
+        expr_map_[call] = arg.flatten(1, arg.rank());
       } else if (IsOp(call, "nn.dense")) {
-	CHECK_EQ(call->args.size(), 2);
-	expr_map_[call] =
-	  poplin::matMul(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()].transpose(), *curp_);
+        CHECK_EQ(call->args.size(), 2);
+        expr_map_[call] = poplin::matMul(*curg_, expr_map_[call->args[0].get()],
+                                         expr_map_[call->args[1].get()].transpose(), *curp_);
       } else if (IsOp(call, "nn.relu")) {
-	CHECK_EQ(call->args.size(), 1);
-	expr_map_[call] =
-	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::RELU, expr_map_[call->args[0].get()], *curp_);
+        CHECK_EQ(call->args.size(), 1);
+        expr_map_[call] = popnn::nonLinearity(*curg_, popnn::NonLinearityType::RELU,
+                                              expr_map_[call->args[0].get()], *curp_);
       } else if (IsOp(call, "nn.softmax")) {
-	CHECK_EQ(call->args.size(), 1);
-	expr_map_[call] =
-	  popnn::nonLinearity(*curg_, popnn::NonLinearityType::SOFTMAX, expr_map_[call->args[0].get()], *curp_);
+        CHECK_EQ(call->args.size(), 1);
+        expr_map_[call] = popnn::nonLinearity(*curg_, popnn::NonLinearityType::SOFTMAX,
+                                              expr_map_[call->args[0].get()], *curp_);
       } else if (IsOp(call, "greater_equal")) {
-	CHECK_EQ(call->args.size(), 2);
-	expr_map_[call] =
-	  popops::gteq(*curg_, expr_map_[call->args[0].get()], expr_map_[call->args[1].get()], *curp_);
+        CHECK_EQ(call->args.size(), 2);
+        expr_map_[call] = popops::gteq(*curg_, expr_map_[call->args[0].get()],
+                                       expr_map_[call->args[1].get()], *curp_);
       } else {
-	LOG(FATAL) << "Unrecognized op: " << PrettyPrint(call->op);
+        LOG(FATAL) << "Unrecognized op: " << PrettyPrint(call->op);
       }
     }
   }
-  void VisitExpr_(const LetNode* node) {
-    LOG(WARNING) << "VISIT LetNode";
-  }
+  void VisitExpr_(const LetNode* node) { LOG(WARNING) << "VISIT LetNode"; }
   void VisitExpr_(const IfNode* node) {
     auto* bak = curp_;
     poplar::program::Sequence true_body;
     poplar::program::Sequence false_body;
     auto result = curg_->addVariable(to_poplar_dtype(node->checked_type()),
-				     to_poplar_shape(node->checked_type()),
-				     poplar::VariableMappingMethod::LINEAR, "");
+                                     to_poplar_shape(node->checked_type()),
+                                     poplar::VariableMappingMethod::LINEAR, "");
     this->VisitExpr(node->cond);
 
     curp_ = &true_body;
@@ -253,42 +243,26 @@ public:
     curp_->add(poplar::program::Copy(expr_map_[node->false_branch.get()], result));
 
     curp_ = bak;
-    curp_->add(poplar::program::If(expr_map_[node->cond.get()],
-				   true_body, false_body));
+    curp_->add(poplar::program::If(expr_map_[node->cond.get()], true_body, false_body));
     expr_map_[node] = result;
   }
-  void VisitExpr_(const OpNode* node) {
-    LOG(WARNING) << "VISIT OpNode";
-  }
-  void VisitExpr_(const TupleGetItemNode* node) {
-    LOG(WARNING) << "VISIT TupleGetItemNode";
-  }
-  void VisitExpr_(const RefCreateNode* node) {
-    LOG(WARNING) << "VISIT RefCreateNode";
-  }
-  void VisitExpr_(const RefReadNode* node) {
-    LOG(WARNING) << "VISIT RefReadNode";
-  }
-  void VisitExpr_(const RefWriteNode* node) {
-    LOG(WARNING) << "VISIT RefWriteNode";
-  }
-  void VisitExpr_(const ConstructorNode* node) {
-    LOG(WARNING) << "VISIT ConstructorNode";
-  }
-  void VisitExpr_(const MatchNode* node) {
-    LOG(WARNING) << "VISIT MatchNode";
-  }
+  void VisitExpr_(const OpNode* node) { LOG(WARNING) << "VISIT OpNode"; }
+  void VisitExpr_(const TupleGetItemNode* node) { LOG(WARNING) << "VISIT TupleGetItemNode"; }
+  void VisitExpr_(const RefCreateNode* node) { LOG(WARNING) << "VISIT RefCreateNode"; }
+  void VisitExpr_(const RefReadNode* node) { LOG(WARNING) << "VISIT RefReadNode"; }
+  void VisitExpr_(const RefWriteNode* node) { LOG(WARNING) << "VISIT RefWriteNode"; }
+  void VisitExpr_(const ConstructorNode* node) { LOG(WARNING) << "VISIT ConstructorNode"; }
+  void VisitExpr_(const MatchNode* node) { LOG(WARNING) << "VISIT MatchNode"; }
 
-private:
+ private:
   void setup_fn(Function fn, const std::string& name) {
     size_t index = progs_.size();
     progs_.push_back(poplar::program::Sequence());
     prog_map_[fn.get()] = index;
     for (const auto& it : fn->params) {
-      expr_map_[it.get()] = curg_->addVariable(to_poplar_dtype(it->checked_type()),
-					       to_poplar_shape(it->checked_type()),
-					       poplar::VariableMappingMethod::LINEAR,
-					       it->vid->name_hint.c_str());
+      expr_map_[it.get()] = curg_->addVariable(
+          to_poplar_dtype(it->checked_type()), to_poplar_shape(it->checked_type()),
+          poplar::VariableMappingMethod::LINEAR, it->vid->name_hint.c_str());
     }
   }
 
@@ -323,12 +297,10 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
   int num_ipu = 1;
   bool use_model = false;
   char* tmp = getenv("TVM_POPLAR_NUM_IPU");
-  if (tmp != NULL)
-    num_ipu = std::atoi(tmp);
+  if (tmp != NULL) num_ipu = std::atoi(tmp);
 
   tmp = getenv("TVM_POPLAR_USE_MODEL");
-  if (tmp != NULL)
-    use_model = bool(std::atoi(tmp));
+  if (tmp != NULL) use_model = bool(std::atoi(tmp));
 
   poplar::Target t;
   if (use_model) {
@@ -353,6 +325,6 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
 
 TVM_REGISTER_GLOBAL("relay.ext.poplar").set_body_typed(PoplarCompiler);
 
-}
-}
-}
+}  // namespace contrib
+}  // namespace relay
+}  // namespace tvm

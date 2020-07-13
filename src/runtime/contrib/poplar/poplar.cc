@@ -31,7 +31,6 @@
 #include <vector>
 
 #include "../../pack_args.h"
-
 #include "common.h"
 #include "fn_info.h"
 
@@ -42,20 +41,19 @@ namespace contrib {
 class PoplarWrappedFunc;
 
 class PoplarModule : public ModuleNode {
-public:
-  explicit PoplarModule(poplar::Executable&& exe, const std::unordered_map<std::string, PoplarFunctionInfo>& fmap) : eng_(std::move(exe)), fmap_(fmap) {}
+ public:
+  explicit PoplarModule(poplar::Executable&& exe,
+                        const std::unordered_map<std::string, PoplarFunctionInfo>& fmap)
+      : eng_(std::move(exe)), fmap_(fmap) {}
 
   const char* type_key() const { return "poplar"; }
 
-  PackedFunc GetFunction(const std::string& name,
-			 const ObjectPtr<Object>& sptr_to_self) final;
+  PackedFunc GetFunction(const std::string& name, const ObjectPtr<Object>& sptr_to_self) final;
 
   /* These are probably not possible for now */
-  void SaveToBinary(dmlc::Stream* stream) final {
-    CHECK(false) << "not possible";
-  }
+  void SaveToBinary(dmlc::Stream* stream) final { CHECK(false) << "not possible"; }
 
-  static Module LoadFromBinary(void *strm) {
+  static Module LoadFromBinary(void* strm) {
     CHECK(false) << "not possible";
     return Module();
   }
@@ -71,15 +69,16 @@ public:
     t->set_active_engine(&eng_);
   }
 
-private:
+ private:
   poplar::Engine eng_;
   std::unordered_map<std::string, PoplarFunctionInfo> fmap_;
   friend class PoplarWrappedFunc;
 };
 
 class PoplarWrappedFunc {
-public:
-  PoplarWrappedFunc(PoplarModule* m, PoplarFunctionInfo& info, ObjectPtr<Object> sptr) : m_(m), info_(info), sptr_(sptr) {}
+ public:
+  PoplarWrappedFunc(PoplarModule* m, PoplarFunctionInfo& info, ObjectPtr<Object> sptr)
+      : m_(m), info_(info), sptr_(sptr) {}
 
   void operator()(TVMArgs args, TVMRetValue* rv) const {
     m_->ensure_current();
@@ -90,7 +89,7 @@ public:
 
     // Setup arguments
     int i = 0;
-    for (const auto& it: info_.input_channels) {
+    for (const auto& it : info_.input_channels) {
       int index = i++;
       NDArray arg = args[index];
       m_->eng_.writeTensor(it, arg->data);
@@ -104,7 +103,7 @@ public:
     m_->eng_.readTensor(info_.output_channel, ret->data);
   }
 
-private:
+ private:
   PoplarModule* m_;
   PoplarFunctionInfo& info_;
 
@@ -113,7 +112,7 @@ private:
 };
 
 PackedFunc PoplarModule::GetFunction(const std::string& name,
-				     const ObjectPtr<Object>& sptr_to_self) {
+                                     const ObjectPtr<Object>& sptr_to_self) {
   if (name == "get_symbol") {
     return nullptr;
   } else if (name == "get_const_vars") {
@@ -132,18 +131,16 @@ PackedFunc PoplarModule::GetFunction(const std::string& name,
   return PackedFunc(f);
 }
 
-TVM_REGISTER_GLOBAL("module.poplar_module_create")
-.set_body_typed([](void* exe_, void* fmap_) {
-    // If there is a way to not go through void pointers, I would like
-    // to know it.
-    // Maybe if we dump/load the Executable, but still need to deal with
-    // the function map (although that could be dump/loaded too maybe).
-    auto* exe = static_cast<poplar::Executable*>(exe_);
-    auto* fmap = static_cast<std::unordered_map<std::string, PoplarFunctionInfo>*>(fmap_);
-    auto m = make_object<PoplarModule>(std::move(*exe), *fmap);
-    return runtime::Module(m);
+TVM_REGISTER_GLOBAL("module.poplar_module_create").set_body_typed([](void* exe_, void* fmap_) {
+  // If there is a way to not go through void pointers, I would like
+  // to know it.
+  // Maybe if we dump/load the Executable, but still need to deal with
+  // the function map (although that could be dump/loaded too maybe).
+  auto* exe = static_cast<poplar::Executable*>(exe_);
+  auto* fmap = static_cast<std::unordered_map<std::string, PoplarFunctionInfo>*>(fmap_);
+  auto m = make_object<PoplarModule>(std::move(*exe), *fmap);
+  return runtime::Module(m);
 });
-
 
 void PoplarFunctionInfo::Save(dmlc::JSONWriter* writer) const {
   writer->BeginObject();
@@ -161,7 +158,6 @@ void PoplarFunctionInfo::Load(dmlc::JSONReader* reader) {
   helper.ReadAllFields(reader);
 }
 
-
 void PoplarFunctionInfo::Save(dmlc::Stream* writer) const {
   writer->Write(program_index);
   writer->Write(input_channels);
@@ -175,6 +171,6 @@ bool PoplarFunctionInfo::Load(dmlc::Stream* reader) {
   return true;
 }
 
-}
-}
-}
+}  // namespace contrib
+}  // namespace runtime
+}  // namespace tvm

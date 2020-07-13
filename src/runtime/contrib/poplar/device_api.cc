@@ -1,5 +1,4 @@
 #include <dmlc/thread_local.h>
-
 #include <tvm/runtime/registry.h>
 
 #include "common.h"
@@ -19,7 +18,7 @@ void IPUDeviceAPI::GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue* rv)
   // None of the properties for IPU seem relevant for these so we just
   // fake them for now.
 
-  switch(kind) {
+  switch (kind) {
     case kDeviceName: {
       *rv = std::string("IPU");
       break;
@@ -38,7 +37,7 @@ void IPUDeviceAPI::GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue* rv)
 }
 
 void* IPUDeviceAPI::AllocDataSpace(TVMContext ctx, size_t nbytes, size_t alignment,
-				   DLDataType type_hint) {
+                                   DLDataType type_hint) {
   // We allocate the buffers on the CPU since it's not really possible
   // to allocate on the device. We ignore alignment since this is not
   // the location that will be referenced for execution.
@@ -48,23 +47,19 @@ void* IPUDeviceAPI::AllocDataSpace(TVMContext ctx, size_t nbytes, size_t alignme
   return ptr;
 }
 
-void IPUDeviceAPI::FreeDataSpace(TVMContext ctx, void* ptr)  {
-  free(ptr);
-}
+void IPUDeviceAPI::FreeDataSpace(TVMContext ctx, void* ptr) { free(ptr); }
 
-void IPUDeviceAPI::CopyDataFromTo(const void* from, size_t from_offset,
-				  void* to, size_t to_offset, size_t size,
-				  TVMContext ctx_from, TVMContext ctx_to,
-				  DLDataType type_hint, TVMStreamHandle stream) {
+void IPUDeviceAPI::CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset,
+                                  size_t size, TVMContext ctx_from, TVMContext ctx_to,
+                                  DLDataType type_hint, TVMStreamHandle stream) {
   memcpy(static_cast<char*>(to) + to_offset, static_cast<const char*>(from) + from_offset, size);
 }
 
-
 TVM_REGISTER_GLOBAL("device_api.ipu").set_body([](TVMArgs args, TVMRetValue* rv) {
-    DeviceAPI* ptr = IPUDeviceAPI::Global().get();
-    *rv = static_cast<void*>(ptr);
+  DeviceAPI* ptr = IPUDeviceAPI::Global().get();
+  *rv = static_cast<void*>(ptr);
 });
 
-}
-}
-}
+}  // namespace contrib
+}  // namespace runtime
+}  // namespace tvm

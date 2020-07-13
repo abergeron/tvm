@@ -2,12 +2,11 @@
 #define TVM_RUNTIME_CONTRIB_POPLAR_COMMON_H_
 
 #include <dmlc/thread_local.h>
-
 #include <tvm/runtime/device_api.h>
 
-#include <poplar/Engine.hpp>
 #include <poplar/Device.hpp>
 #include <poplar/DeviceManager.hpp>
+#include <poplar/Engine.hpp>
 #include <poplar/IPUModel.hpp>
 
 namespace tvm {
@@ -15,16 +14,13 @@ namespace runtime {
 namespace contrib {
 
 class IPUThreadEntry {
-public:
- IPUThreadEntry() : valid_(false), active_engine_(nullptr) {}
+ public:
+  IPUThreadEntry() : valid_(false), active_engine_(nullptr) {}
 
-  static IPUThreadEntry* ThreadLocal() {
-    return dmlc::ThreadLocalStore<IPUThreadEntry>::Get();
-  }
+  static IPUThreadEntry* ThreadLocal() { return dmlc::ThreadLocalStore<IPUThreadEntry>::Get(); }
 
   void set_device(poplar::Device&& dev) {
-    if (valid_)
-      device_.detach();
+    if (valid_) device_.detach();
     device_ = std::move(dev);
     device_.attach();
     valid_ = true;
@@ -42,19 +38,18 @@ public:
  private:
   bool valid_;
   poplar::Device device_;
-  poplar::Engine *active_engine_;
+  poplar::Engine* active_engine_;
 };
 
 class IPUDeviceAPI final : public DeviceAPI {
-public:
+ public:
   IPUDeviceAPI() : m_(poplar::DeviceManager::createDeviceManager()) {
     // XXX: Hard-code this for now, don't use from multiple threads
     IPUThreadEntry* t = GetThreadEntry();
     bool use_model = false;
     char* tmp = getenv("TVM_POPLAR_USE_MODEL");
 
-    if (tmp != NULL)
-      use_model = bool(atoi(tmp));
+    if (tmp != NULL) use_model = bool(atoi(tmp));
 
     if (!use_model) {
       t->set_device(m_.getDevice(0));
@@ -70,13 +65,11 @@ public:
     t->set_device(m_.getDevice(ctx.device_id));
   }
   void GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue* rv) final;
-  void* AllocDataSpace(TVMContext ctx, size_t nbytes, size_t alignment,
-                       DLDataType type_hint) final;
+  void* AllocDataSpace(TVMContext ctx, size_t nbytes, size_t alignment, DLDataType type_hint) final;
   void FreeDataSpace(TVMContext ctx, void* ptr) final;
-  void CopyDataFromTo(const void* from, size_t from_offset,
-                      void* to, size_t to_offset, size_t size,
-                      TVMContext ctx_from, TVMContext ctx_to,
-                      DLDataType type_hint, TVMStreamHandle stream) final;
+  void CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset, size_t size,
+                      TVMContext ctx_from, TVMContext ctx_to, DLDataType type_hint,
+                      TVMStreamHandle stream) final;
   void StreamSync(TVMContext ctx, TVMStreamHandle stream) final {}
 
   IPUThreadEntry* GetThreadEntry() { return IPUThreadEntry::ThreadLocal(); }
@@ -85,12 +78,13 @@ public:
     static std::shared_ptr<IPUDeviceAPI> inst = std::make_shared<IPUDeviceAPI>();
     return inst;
   }
+
  private:
   poplar::DeviceManager m_;
 };
 
-}
-}
-}
+}  // namespace contrib
+}  // namespace runtime
+}  // namespace tvm
 
 #endif
