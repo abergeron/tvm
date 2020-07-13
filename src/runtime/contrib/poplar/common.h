@@ -23,6 +23,10 @@
 #include <dmlc/thread_local.h>
 #include <tvm/runtime/device_api.h>
 
+#include <memory>
+// clang-format and cpplint are fighting about the location of this header
+#include <utility>
+
 #include <poplar/Device.hpp>
 #include <poplar/DeviceManager.hpp>
 #include <poplar/Engine.hpp>
@@ -68,7 +72,7 @@ class IPUDeviceAPI final : public DeviceAPI {
     bool use_model = false;
     char* tmp = getenv("TVM_POPLAR_USE_MODEL");
 
-    if (tmp != NULL) use_model = bool(atoi(tmp));
+    if (tmp != NULL) use_model = static_cast<bool>(atoi(tmp));
 
     if (!use_model) {
       t->set_device(m_.getDevice(0));
@@ -106,4 +110,4 @@ class IPUDeviceAPI final : public DeviceAPI {
 }  // namespace runtime
 }  // namespace tvm
 
-#endif
+#endif  // TVM_RUNTIME_CONTRIB_POPLAR_COMMON_H_

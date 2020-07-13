@@ -77,7 +77,7 @@ class PoplarModule : public ModuleNode {
 
 class PoplarWrappedFunc {
  public:
-  PoplarWrappedFunc(PoplarModule* m, PoplarFunctionInfo& info, ObjectPtr<Object> sptr)
+  PoplarWrappedFunc(PoplarModule* m, const PoplarFunctionInfo& info, ObjectPtr<Object> sptr)
       : m_(m), info_(info), sptr_(sptr) {}
 
   void operator()(TVMArgs args, TVMRetValue* rv) const {

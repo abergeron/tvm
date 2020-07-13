@@ -106,9 +106,9 @@ static std::vector<size_t> to_poplar_shape(const Type& t) {
 
 class PoplarCodeGen : public ExprVisitor {
  public:
-  explicit PoplarCodeGen() {}
+  PoplarCodeGen() {}
 
-  std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph& g,
+  std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph g,
                                                                     const ObjectRef& ref) {
     curg_ = &g;
 
@@ -319,7 +319,7 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
   if (tmp != NULL) num_ipu = std::atoi(tmp);
 
   tmp = getenv("TVM_POPLAR_USE_MODEL");
-  if (tmp != NULL) use_model = bool(std::atoi(tmp));
+  if (tmp != NULL) use_model = static_cast<bool>(std::atoi(tmp));
 
   poplar::Target t;
   if (use_model) {

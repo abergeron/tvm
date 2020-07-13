@@ -25,6 +25,7 @@
 #include <dmlc/json.h>
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace tvm {
@@ -53,4 +54,4 @@ namespace dmlc {
 DMLC_DECLARE_TRAITS(has_saveload, ::tvm::runtime::contrib::PoplarFunctionInfo, true);
 }
 
-#endif
+#endif  // TVM_RUNTIME_CONTRIB_POPLAR_FN_INFO_H_
