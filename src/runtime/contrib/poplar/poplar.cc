@@ -75,9 +75,10 @@ class PoplarModule : public ModuleNode {
   friend class PoplarWrappedFunc;
 };
 
+// This needs the non-const ref otherwise it crashes.  I don't know why
 class PoplarWrappedFunc {
  public:
-  PoplarWrappedFunc(PoplarModule* m, const PoplarFunctionInfo& info, ObjectPtr<Object> sptr)
+  PoplarWrappedFunc(PoplarModule* m, PoplarFunctionInfo& info, ObjectPtr<Object> sptr)
       : m_(m), info_(info), sptr_(sptr) {}
 
   void operator()(TVMArgs args, TVMRetValue* rv) const {

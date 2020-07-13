@@ -108,13 +108,13 @@ class PoplarCodeGen : public ExprVisitor {
  public:
   PoplarCodeGen() {}
 
-  std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph g,
+  std::pair<std::vector<poplar::program::Program>, pop_fn_info> run(poplar::Graph* g,
                                                                     const ObjectRef& ref) {
-    curg_ = &g;
+    curg_ = g;
 
-    popops::addCodelets(g);
-    popnn::addCodelets(g);
-    poplin::addCodelets(g);
+    popops::addCodelets(*curg_);
+    popnn::addCodelets(*curg_);
+    poplin::addCodelets(*curg_);
 
     if (ref->IsInstance<FunctionNode>()) {
       Function f = Downcast<Function>(ref);
@@ -330,7 +330,7 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
   }
   poplar::Graph g(t);
   PoplarCodeGen codegen;
-  auto result = codegen.run(g, ref);
+  auto result = codegen.run(&g, ref);
   const auto& progs = result.first;
   pop_fn_info& fn_map = result.second;
 
