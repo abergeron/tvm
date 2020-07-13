@@ -112,9 +112,10 @@ class PoplarCodeGen : public ExprVisitor {
                                                                     const ObjectRef& ref) {
     curg_ = g;
 
-    popops::addCodelets(*curg_);
-    popnn::addCodelets(*curg_);
+    // We need to add codelets (aka ops) for the libs that we use to the Graph
     poplin::addCodelets(*curg_);
+    popnn::addCodelets(*curg_);
+    popops::addCodelets(*curg_);
 
     if (ref->IsInstance<FunctionNode>()) {
       Function f = Downcast<Function>(ref);
@@ -131,13 +132,16 @@ class PoplarCodeGen : public ExprVisitor {
 
       IRModule mod = Downcast<IRModule>(ref);
 
-      // First map the functions to progams
+      // The first loop maps the function to polar Program, and the
+      // second loops converts the functions.  This is to ensure that
+      // if a function calls the other, the program is there to be
+      // called (although there is no support for function calls for now).
+
       for (const auto& it : mod->functions) {
         Function f = Downcast<Function>(it.second);
         this->setup_fn(f, it.first->name_hint);
       }
 
-      // Then convert the functions
       for (const auto& it : mod->functions) {
         Function f = Downcast<Function>(it.second);
         this->VisitExpr(f);
@@ -161,10 +165,14 @@ class PoplarCodeGen : public ExprVisitor {
     // Safety check to make sure everything is ok.
     CHECK(expr_map_.find(node) != expr_map_.end());
   }
-  void VisitExpr_(const GlobalVarNode* node) { CHECK(false) << "Seen a GlobalVarNode\n"; }
+
+  void VisitExpr_(const GlobalVarNode* node) { CHECK(false) << "GlobalVarNode not supported\n"; }
+
   void VisitExpr_(const ConstantNode* node) {
     poplar::Type t = to_poplar_dtype(node->checked_type());
     poplar::Tensor res;
+    // poplar need the type of the input as a template parameter so we
+    // can't just feed void*
     if (t == poplar::CHAR || t == poplar::SIGNED_CHAR) {
       res = curg_->addConstant(t, to_poplar_shape(node->checked_type()),
                                static_cast<int8_t*>(node->data->data));
@@ -195,7 +203,9 @@ class PoplarCodeGen : public ExprVisitor {
     poputil::mapTensorLinearly(*curg_, res);
     expr_map_[node] = res;
   }
-  void VisitExpr_(const TupleNode* node) { CHECK(false) << "Seen a TupleNode\n"; }
+
+  void VisitExpr_(const TupleNode* node) { CHECK(false) << "TupleNode not supported\n"; }
+
   void VisitExpr_(const FunctionNode* node) {
     curp_ = static_cast<poplar::program::Sequence*>(&progs_[prog_map_[node]]);
     this->VisitExpr(node->body);
@@ -207,17 +217,13 @@ class PoplarCodeGen : public ExprVisitor {
     }
     if (const auto* func = call->op.as<FunctionNode>()) {
       // function call
-      CHECK(false) << "not supported for now";
+      CHECK(false) << "Calling a function not supported for now";
     } else {
       // it's an op
       if (IsOp(call, "add")) {
         CHECK_EQ(call->args.size(), 2);
         expr_map_[call] = popops::add(*curg_, expr_map_[call->args[0].get()],
                                       expr_map_[call->args[1].get()], *curp_);
-      } else if (IsOp(call, "subtract")) {
-        LOG(WARNING) << "VISIT op -";
-      } else if (IsOp(call, "multiply")) {
-        LOG(WARNING) << "VISIT op *";
       } else if (IsOp(call, "nn.batch_flatten")) {
         CHECK_EQ(call->args.size(), 1);
         const poplar::Tensor& arg = expr_map_[call->args[0].get()];
@@ -243,38 +249,64 @@ class PoplarCodeGen : public ExprVisitor {
       }
     }
   }
+
   void VisitExpr_(const LetNode* node) { LOG(WARNING) << "VISIT LetNode"; }
+
   void VisitExpr_(const IfNode* node) {
     auto* bak = curp_;
     poplar::program::Sequence true_body;
     poplar::program::Sequence false_body;
+    // This tensor is used to "merge" the resuts of the two branches
     auto result = curg_->addVariable(to_poplar_dtype(node->checked_type()),
                                      to_poplar_shape(node->checked_type()),
                                      poplar::VariableMappingMethod::LINEAR, "");
+
+    // The way this is done might cause problems if the two branches
+    // share some code that has not been visited previously, since it
+    // will be mapped to one of the branches and not execute on the
+    // other.  The tensor will still be there, but they will be
+    // garbage-initialized and this will produce bad results. Not sure
+    // how to fix that without extensive analysis.
+
+    // Make sure the condition is mapped
     this->VisitExpr(node->cond);
 
+    // Set the current program to a new one and visit the true branch
+    // to build the true program, then copy the results to the
+    // "output" tensor
     curp_ = &true_body;
     this->VisitExpr(node->true_branch);
     curp_->add(poplar::program::Copy(expr_map_[node->true_branch.get()], result));
 
+    // Set the current program to a new one and visit the false branch
+    // to build the false program, then copy the results to the
+    // "output" tensor
     curp_ = &false_body;
     this->VisitExpr(node->false_branch);
     curp_->add(poplar::program::Copy(expr_map_[node->false_branch.get()], result));
 
+    // Set the current program back to the original one and insert the If node.
     curp_ = bak;
     curp_->add(poplar::program::If(expr_map_[node->cond.get()], true_body, false_body));
     expr_map_[node] = result;
   }
   void VisitExpr_(const OpNode* node) { LOG(WARNING) << "VISIT OpNode"; }
+
   void VisitExpr_(const TupleGetItemNode* node) { LOG(WARNING) << "VISIT TupleGetItemNode"; }
+
   void VisitExpr_(const RefCreateNode* node) { LOG(WARNING) << "VISIT RefCreateNode"; }
+
   void VisitExpr_(const RefReadNode* node) { LOG(WARNING) << "VISIT RefReadNode"; }
+
   void VisitExpr_(const RefWriteNode* node) { LOG(WARNING) << "VISIT RefWriteNode"; }
+
   void VisitExpr_(const ConstructorNode* node) { LOG(WARNING) << "VISIT ConstructorNode"; }
+
   void VisitExpr_(const MatchNode* node) { LOG(WARNING) << "VISIT MatchNode"; }
 
  private:
   void setup_fn(Function fn, const std::string& name) {
+    // Adds the mapping for the arguments of a function
     size_t index = progs_.size();
     progs_.push_back(poplar::program::Sequence());
     prog_map_[fn.get()] = index;
@@ -286,6 +318,16 @@ class PoplarCodeGen : public ExprVisitor {
   }
 
   void fill_fn_info(const Function& f, const std::string& name) {
+    // Fills in a PoplarFunctionInfor for a function and setup its
+    // input and output tensors to be reachable from the outside.
+    // This has to be done after code generation is complete.
+
+    // The way this is done is probably sub-optimal.  The best way
+    // would be to generate a program that does the copies from
+    // streams for the arguments, call the specified function and the
+    // copies the result out.  This would also require code changes in
+    // the module to use the streams instead of {write,read}Tensor.
+
     PoplarFunctionInfo& pfi = fn_info_[name];
     pfi.program_index = prog_map_[f.get()];
     size_t i = 0;
@@ -315,6 +357,9 @@ class PoplarCodeGen : public ExprVisitor {
 runtime::Module PoplarCompiler(const ObjectRef& ref) {
   int num_ipu = 1;
   bool use_model = false;
+
+  // This is not the best interface, but there is currrently no way to
+  // pass information to a backend.
   char* tmp = getenv("TVM_POPLAR_NUM_IPU");
   if (tmp != NULL) num_ipu = std::atoi(tmp);
 
@@ -328,6 +373,8 @@ runtime::Module PoplarCompiler(const ObjectRef& ref) {
   } else {
     t = poplar::Target::createIPUTarget(num_ipu, "ipu1");
   }
+  // We create the Graph here to avoid shenanigans with std::move()
+  // since it is not copyable.
   poplar::Graph g(t);
   PoplarCodeGen codegen;
   auto result = codegen.run(&g, ref);

@@ -50,7 +50,9 @@ class PoplarModule : public ModuleNode {
 
   PackedFunc GetFunction(const std::string& name, const ObjectPtr<Object>& sptr_to_self) final;
 
-  /* These are probably not possible for now */
+  // It's not possible to serialize a poplar engine. The program
+  // would be possible to serialize, but since we need to move it into
+  // the engine we can't keep a reference around.
   void SaveToBinary(dmlc::Stream* stream) final { CHECK(false) << "not possible"; }
 
   static Module LoadFromBinary(void* strm) {
@@ -58,11 +60,14 @@ class PoplarModule : public ModuleNode {
     return Module();
   }
 
+  // There are no textual representations for a poplar executable
   std::string GetSource(const std::string& format = "") {
     CHECK(false) << "not for now";
     return "";
   }
 
+  // This makes sure that our engine is active on the current device.
+  // Used for function calls.
   void ensure_current() {
     IPUThreadEntry* t = IPUDeviceAPI::Global()->GetThreadEntry();
     // This is cached and will do nothing if engine is already loaded.
@@ -75,15 +80,17 @@ class PoplarModule : public ModuleNode {
   friend class PoplarWrappedFunc;
 };
 
-// This needs the non-const ref otherwise it crashes.  I don't know why
 class PoplarWrappedFunc {
  public:
+  // This needs the non-const ref to info otherwise it crashes.
+  // I don't know why.
   PoplarWrappedFunc(PoplarModule* m, PoplarFunctionInfo& info, ObjectPtr<Object> sptr)
       : m_(m), info_(info), sptr_(sptr) {}
 
   void operator()(TVMArgs args, TVMRetValue* rv) const {
     m_->ensure_current();
 
+    // We only handle tensor types (aka NDArray)
     for (int i = 0; i < args.num_args; ++i) {
       TVM_CHECK_TYPE_CODE(args.type_codes[i], kTVMNDArrayHandle);
     }
@@ -114,6 +121,9 @@ class PoplarWrappedFunc {
 
 PackedFunc PoplarModule::GetFunction(const std::string& name,
                                      const ObjectPtr<Object>& sptr_to_self) {
+  // I'm not really sure what those do, but it appears they are
+  // requested and since we don't need them, returning nullptr
+  // disables them (from reading the callsite).
   if (name == "get_symbol") {
     return nullptr;
   } else if (name == "get_const_vars") {
@@ -135,8 +145,8 @@ PackedFunc PoplarModule::GetFunction(const std::string& name,
 TVM_REGISTER_GLOBAL("module.poplar_module_create").set_body_typed([](void* exe_, void* fmap_) {
   // If there is a way to not go through void pointers, I would like
   // to know it.
-  // Maybe if we dump/load the Executable, but still need to deal with
-  // the function map (although that could be dump/loaded too maybe).
+  // We could dump/load the executable, but that doesn't work for IPU
+  // model executables.
   auto* exe = static_cast<poplar::Executable*>(exe_);
   auto* fmap = static_cast<std::unordered_map<std::string, PoplarFunctionInfo>*>(fmap_);
   auto m = make_object<PoplarModule>(std::move(*exe), *fmap);

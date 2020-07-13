@@ -34,8 +34,9 @@ void IPUDeviceAPI::GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue* rv)
   }
   CHECK_LT(index, m_.getNumDevices()) << "Invalid device id " << index;
 
-  // None of the properties for IPU seem relevant for these so we just
-  // fake them for now.
+  // None of the properties that you can fetch from an IPU seem
+  // relevant for these so we just fake them for now.  This will be
+  // bad when there will be more than one model.
 
   switch (kind) {
     case kDeviceName: {
@@ -51,6 +52,8 @@ void IPUDeviceAPI::GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue* rv)
       break;
     }
     default:
+      // I don't know if this is the right thing to do when we don't
+      // know the value for a property
       return;
   }
 }
@@ -58,8 +61,8 @@ void IPUDeviceAPI::GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue* rv)
 void* IPUDeviceAPI::AllocDataSpace(TVMContext ctx, size_t nbytes, size_t alignment,
                                    DLDataType type_hint) {
   // We allocate the buffers on the CPU since it's not really possible
-  // to allocate on the device. We ignore alignment since this is not
-  // the location that will be referenced for execution.
+  // to allocate on the device. We also ignore alignment since this is
+  // not the location that will be referenced for execution.
   void* ptr;
   ptr = malloc(nbytes);
   if (ptr == nullptr) throw std::bad_alloc();
@@ -71,6 +74,7 @@ void IPUDeviceAPI::FreeDataSpace(TVMContext ctx, void* ptr) { free(ptr); }
 void IPUDeviceAPI::CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset,
                                   size_t size, TVMContext ctx_from, TVMContext ctx_to,
                                   DLDataType type_hint, TVMStreamHandle stream) {
+  // Since our buffers are CPU-only, we can do memcpy
   memcpy(static_cast<char*>(to) + to_offset, static_cast<const char*>(from) + from_offset, size);
 }
 
